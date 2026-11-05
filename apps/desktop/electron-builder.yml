@@ -1,0 +1,20 @@
+appId: com.pos.terminal
+productName: POS Terminal
+directories:
+  output: release
+files:
+  - dist/**/*
+asar: true
+electronDist: node_modules/electron/dist
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: POS-Terminal-${version}-Setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false

@@ -1,0 +1,21 @@
+{
+  "name": "@pos/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/app.test.ts"
+  },
+  "dependencies": {
+    "express": "5.3.0"
+  },
+  "devDependencies": {
+    "@pos/shared": "workspace:*",
+    "@types/express": "5.0.6",
+    "tsx": "4.23.15"
+  }
+}

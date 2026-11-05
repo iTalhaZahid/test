@@ -1,0 +1,28 @@
+{
+  "name": "pos-v1",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "scripts": {
+    "install:deps": "pnpm install --frozen-lockfile",
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "dev:desktop": "pnpm --filter @pos/desktop dev",
+    "dev:admin": "pnpm --filter @pos/admin-web dev",
+    "dev:backend": "pnpm --filter @pos/backend dev",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "test": "pnpm --filter @pos/backend test",
+    "package:win": "pnpm --filter @pos/desktop package:win"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.14.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

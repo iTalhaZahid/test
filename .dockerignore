@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.next
+**/release
+.git
+apps/desktop
+apps/admin-web
+**/.env
+**/.env.*
+!**/.env.example

@@ -1,0 +1,30 @@
+{
+  "name": "@pos/desktop",
+  "version": "0.1.0",
+  "description": "POS v1 Windows terminal",
+  "author": "POS",
+  "private": true,
+  "main": "dist/main/main.js",
+  "scripts": {
+    "postinstall": "install-electron",
+    "dev": "pnpm build && electron .",
+    "build": "tsc -p tsconfig.main.json && vite build",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json --noEmit",
+    "start": "electron .",
+    "package:win": "pnpm build && electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@pos/shared": "workspace:*",
+    "@tailwindcss/vite": "4.3.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "tailwindcss": "4.3.4",
+    "vite": "8.3.6"
+  }
+}
