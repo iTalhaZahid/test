@@ -1,4 +1,13 @@
-import { app } from './app.js';
+import { createApp } from './app.js';
+import { PosModel } from './models/pos-model.js';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+
+const directory=path.resolve(process.env.POS_DATA_DIR??'.data');
+mkdirSync(directory,{recursive:true});
+const model=new PosModel(path.join(directory,'online.sqlite'));
+await model.bootstrap();
+const app=createApp(model);
 
 const port = Number(process.env.PORT ?? 4000);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -14,6 +23,7 @@ server.on('error', (error) => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     server.close((error) => {
+      model.close();
       if (error) console.error(error);
       process.exit(error ? 1 : 0);
     });

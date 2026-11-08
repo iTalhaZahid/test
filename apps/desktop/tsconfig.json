@@ -1,6 +1,7 @@
 {
-  "extends": "@pos/shared/tsconfig.json",
+  "extends": "../../packages/shared/tsconfig.json",
   "compilerOptions": {
+    "types": ["vite/client"],
     "lib": [
       "ES2022",
       "DOM",

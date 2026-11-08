@@ -8,3 +8,7 @@ release/
 .env.*
 !.env.example
 *.log
+.data/
+.data-backup-*/
+.data-new-*/
+.test-dist/

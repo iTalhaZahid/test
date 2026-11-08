@@ -15,8 +15,11 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
-    "test": "pnpm --filter @pos/backend test",
-    "package:win": "pnpm --filter @pos/desktop package:win"
+    "build:web": "pnpm --filter @pos/admin-web build",
+    "start:web": "pnpm --filter @pos/admin-web start",
+    "test": "pnpm -r --if-present test",
+    "package:win": "pnpm --filter @pos/desktop package:win",
+    "package:demo": "pnpm --filter @pos/desktop package:demo"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,0 +1,10 @@
+extends: ./electron-builder.yml
+appId: com.pos.terminal.demo
+productName: POS Terminal Demo
+extraMetadata:
+  name: pos-terminal-demo
+  productName: POS Terminal Demo
+directories:
+  output: release/demo
+win:
+  artifactName: POS-Terminal-Demo-${version}-Setup.${ext}

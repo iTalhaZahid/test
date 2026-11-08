@@ -1,0 +1,7 @@
+import { PasswordInput } from './PasswordInput';
+import { useState, type FormEvent } from 'react';
+export function PasswordForm(){
+  const [current,setCurrent]=useState(''),[next,setNext]=useState(''),[repeat,setRepeat]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+  async function submit(event:FormEvent){event.preventDefault();if(busy)return;if(next!==repeat){setMessage('New passwords do not match.');return;}setBusy(true);setMessage('');try{await window.posAuth.changePassword(current,next);setCurrent('');setNext('');setRepeat('');setMessage('Password updated.');}catch{setMessage('Could not change password. Check your current password and try again.');}finally{setBusy(false);}}
+  return <form onSubmit={submit} className="management-panel max-w-md rounded-xl border border-slate-200 bg-white p-6"><fieldset disabled={busy} className="grid gap-4">{[{label:'Current password',value:current,set:setCurrent},{label:'New password',value:next,set:setNext},{label:'Confirm new password',value:repeat,set:setRepeat}].map(({label,value,set})=><label key={label} className="grid gap-2 text-sm font-medium">{label}<PasswordInput className="login-input" required minLength={label==='Current password'?1:8} maxLength={128} autoComplete={label==='Current password'?'current-password':'new-password'} value={value} onChange={e=>set(e.target.value)}/></label>)}<button className="primary-button">{busy?'Saving…':'Change password'}</button></fieldset>{message&&<p role="status" className="mt-4 text-sm">{message}</p>}</form>;
+}

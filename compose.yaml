@@ -20,7 +20,9 @@ services:
       context: .
     environment:
       PORT: "4000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pos}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pos}
+      POS_DATA_DIR: /data
+    volumes:
+      - backend-data:/data
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -33,3 +35,4 @@ services:
       retries: 5
 volumes:
   postgres-data:
+  backend-data:

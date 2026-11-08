@@ -7,6 +7,7 @@ COPY apps/backend/package.json apps/backend/package.json
 RUN pnpm install --frozen-lockfile --filter @pos/backend...
 COPY apps/backend apps/backend
 RUN pnpm --filter @pos/backend build
+RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 4000
 CMD ["pnpm", "--filter", "@pos/backend", "start"]

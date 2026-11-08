@@ -1,5 +1,5 @@
 {
-  "extends": "@pos/shared/tsconfig.json",
+  "extends": "../../packages/shared/tsconfig.json",
   "compilerOptions": {
     "lib": [
       "dom",
@@ -28,6 +28,7 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".test-dist"
   ]
 }

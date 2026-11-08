@@ -1,1 +1,2 @@
-@import "tailwindcss";
+@import "../../../desktop/src/renderer/styles.css";
+@source "../../../desktop/src/renderer";

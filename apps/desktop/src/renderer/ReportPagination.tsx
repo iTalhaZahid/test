@@ -1,0 +1,4 @@
+export function ReportPagination({page,total,onChange,disabled=false,pageSize=10}:{page:number;total:number;onChange:(page:number)=>void;disabled?:boolean;pageSize?:number}) {
+  const pages=Math.max(1,Math.ceil(total/pageSize));
+  return <nav aria-label="Report pages" className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4"><p className="text-sm text-slate-600">{total?`${(page-1)*pageSize+1}-${Math.min(page*pageSize,total)} of ${total}`:'0 records'}</p><div className="flex items-center gap-3"><button disabled={disabled||page<=1} onClick={()=>onChange(page-1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button><span className="text-sm">Page {page} of {pages}</span><button disabled={disabled||page>=pages} onClick={()=>onChange(page+1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button></div></nav>;
+}

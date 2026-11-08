@@ -4,6 +4,7 @@ directories:
   output: release
 files:
   - dist/**/*
+  - '!dist/main/**/*.test.js'
 asar: true
 electronDist: node_modules/electron/dist
 win:

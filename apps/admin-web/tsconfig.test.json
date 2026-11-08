@@ -1,0 +1,10 @@
+{
+  "extends": "../../packages/shared/tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "rootDir": "../..",
+    "outDir": ".test-dist"
+  },
+  "include": ["src/server/store.test.ts"]
+}

@@ -1,11 +1,9 @@
-# Local storage boundary
+# Local storage and sync boundary
 
-SQLite, filesystem access, and privileged operations belong in this main-process directory.
-No database driver, file, business table, migration, or renderer storage is created yet.
-At the local-storage milestone, open SQLite under an app-owned directory from
-`app.getPath('userData')`, never the installation directory. Verify the chosen driver
-in the packaged Electron runtime and preserve data across updates and uninstall.
+SQLite, filesystem access, network credentials and privileged operations belong in the Electron main process. Local data lives under app.getPath('userData'), never in the installation directory.
 
-Before accepting financial writes, implement the PRD's atomic transaction + outbox
-and a separate durable recovery copy; saved success requires both. The recovery
-location and access protection need to be resolved before release.
+AuthStore encrypts salted password verifiers with safeStorage. SyncStore stores encrypted pairing/session tokens and exact in-flight batches, captures management changes with transactional triggers, and acknowledges the existing financial outboxes only after server commit. SyncEngine handles first online login, previously verified offline login, catalog pulls, health checks and background retries. The renderer receives only narrow preload methods and public connection status.
+
+SalesStore retains atomic local writes and separate encrypted recovery copies before reporting success. Sync does not run inside a checkout transaction or remove recovery copies.
+
+See [online/offline setup and deployment](../../../backend/README.md) for environment variables, MVC API routes, pairing, cache expiry, the single-terminal boundary and verification.

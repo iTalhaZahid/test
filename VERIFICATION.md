@@ -1,5 +1,9 @@
 # Foundation verification
 
+For the subsequent SQLite/login and React Bits milestone, see
+[desktop verification notes](apps/desktop/DESKTOP.md). The checks below describe
+the original foundation before that milestone.
+
 Verified on Windows 10 x64 on 2026-11-06. The host has Node 24.15.0; the
 repository and Dockerfile pin Node 24.22.2 LTS. pnpm 10.34.9 was invoked through
 `npx --yes pnpm@10.34.9` because pnpm was not globally installed.
@@ -43,3 +47,12 @@ Tooling references used during setup:
 [Tailwind Vite integration](https://tailwindcss.com/docs/installation/using-vite),
 [Tailwind Next.js integration](https://tailwindcss.com/docs/installation/framework-guides/nextjs),
 [Electron releases](https://releases.electronjs.org/?channel=stable).
+
+
+## Offline-first online sync (2026-11-08)
+
+Backend HTTP and desktop-storage integration tests pass for initial online pairing/login, encrypted cached offline login, cache expiry, legacy staff provisioning, local menu access after restart, offline sales/expenses/credit recoveries/monthly payments, reconnect uploads, server-committed lost responses, duplicate prevention, edits made during upload, rejected credentials and conflict retention. Backend validation rejects anonymous sync and invalid money, and catalog feeds exclude password verifiers. Connection-pill labels are checked by server rendering. Existing desktop and admin-web tests pass.
+
+Desktop, backend and admin-web type checks pass. Backend and desktop production builds pass; existing Vite bundle/directive warnings remain. Lint passes for the files changed for sync.
+
+No public deployment, live GUI walkthrough, physical network disconnection or printer test was performed for this change. Integration tests use a real local HTTP server and simulate transport failures. Server SQLite requires a persistent disk and one API instance/business with one paired POS terminal. The separate Next.js web store is not migrated to the central sync API. See apps/backend/README.md for setup and deployment boundaries.
