@@ -3,13 +3,14 @@ import { posRoutes } from './routes/pos-routes.js';
 import type { PosModel } from './models/pos-model.js';
 import { ApiError } from './models/validation.js';
 import { webRoutes } from './routes/web-routes.js';
+import { getStore } from './models/web-store.js';
 
 export function createApp(model?: PosModel) {
   const app=express();
   app.disable('x-powered-by');
   app.use((_request,response,next)=>{response.set('Cache-Control','no-store');next();});
   app.get('/health', (_request,response)=>{response.json({status:'ok'});});
-  app.use('/api/pos', webRoutes());
+  app.use('/api/pos', webRoutes(async work => work(await getStore())));
   app.use(express.json({limit:'16mb'}));
   if(model)app.use('/api/v1',posRoutes(model));
   app.use((_request,response)=>{response.status(404).json({error:'Not found.'});});

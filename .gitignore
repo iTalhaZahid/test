@@ -12,3 +12,4 @@ release/
 .data-backup-*/
 .data-new-*/
 .test-dist/
+.neon

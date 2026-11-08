@@ -1,42 +1,29 @@
 # Online POS API
 
-The API uses MVC folders: `src/models` owns validation and persistent data, `src/controllers` handles HTTP requests and JSON responses, and `src/routes` maps endpoints. `app.ts` configures Express; `server.mts` opens storage and starts the process. Its standalone ESM build is `dist/server.mjs`.
+The deployed API uses native PostgreSQL stores under `src/postgres`; `src/models` retains the original SQLite implementation only for offline regression tests. The API uses MVC folders: `src/models` owns validation and persistent data, `src/controllers` handles HTTP requests and JSON responses, and `src/routes` maps endpoints. `app.ts` configures Express; `server.mts` opens storage and starts the process. Its standalone ESM build is `dist/server.mjs`.
 
 ## Start locally
 
-From the repository root in PowerShell:
+From the repository root, run Neon setup in [DEPLOYMENT.md](../../DEPLOYMENT.md),
+then `npm run db:migrate`, `npm run build`, and `npm run dev:backend`.
+The backend commands load root `.env`/`.env.local`. Runtime uses `DATABASE_URL`;
+migrations use `DATABASE_URL_UNPOOLED`. `POS_WEB_ENCRYPTION_KEY` is a persistent
+64-hex-character secret, and private browser demos need `POS_WEB_DEMO=1`.
+No local data directory is used by the deployed backend.
 
-```powershell
-$env:POS_DATA_DIR="$PWD/apps/backend/.data"
-npm run build --prefix apps/backend
-npm start --prefix apps/backend
-```
-
-On an empty database, startup creates **superadmin** with password **PosSuperAdmin123!** and the superuser role. No environment variables are needed for the first administrator. After signing in, use **Change Password**, then **Manage Admins** to create administrator accounts. Startup never resets changed passwords or replaces existing users. Environment files only configure server settings; native startup reads process environment variables. Node 24 is required.
-
-In another PowerShell window:
-
-```powershell
-$env:POS_API_URL='http://127.0.0.1:4000'
-npm run build --prefix apps/desktop
-npm start --prefix apps/desktop
-```
-
-Sign in with the bootstrap administrator first to pair the terminal, then create staff and manage menus in POS. Staff accounts created offline upload automatically; each staff member must complete one online login before offline login is enabled for them. Built-in demo credentials are not automatically provisioned as online identities. Staff created through the older local management screen are retained and uploaded after administrator pairing; they still need a first online login.
-
-For Docker, use the existing Compose commands; no administrator credentials are read from `.env`. The existing PostgreSQL service still uses the root `.env` for its database settings. The `backend-data` volume stores the API database. Back up that volume; container replacement alone must not remove it. The existing PostgreSQL service is retained for compatibility with the earlier scaffold but is not used by this sync implementation.
+The migration creates missing sync `superadmin` / `PosSuperAdmin123!` and, when
+demo mode is enabled, web `superuser` / `PosSuper123!`, `admin` / `PosAdmin123!`,
+and `demo` / `PosDemo123!`. Change passwords immediately. Running migrations
+again never resets existing accounts. Accounts and financial records for the
+browser and the one paired Electron terminal remain separate schemas.
 
 ## Browser web API
 
-The backend also owns `POST /api/pos` and `src/models/web-store.ts`. The Next.js
-frontend calls it through its `BACKEND_URL` service binding. Do not add a public
-rewrite for this endpoint: the browser uses Next.js for same-origin validation.
-Session cookies, permissions, validation, and the separate web database schema
-are retained. `POS_WEB_DATA_DIR` defaults to `POS_DATA_DIR/web`; point it at the
-old web data directory to preserve records and the encryption key. Web demo
-accounts require development mode or `POS_WEB_DEMO=1` for private demonstrations.
-This endpoint does not share accounts or financial records with `/api/v1`.
-See [deployment instructions](../../DEPLOYMENT.md).
+`POST /api/pos` belongs to this backend. Next.js validates browser requests and
+calls it through the generated `BACKEND_URL` binding. The endpoint has no direct
+public rewrite. Native PostgreSQL web stores preserve the existing API, roles,
+financial validation and operation IDs. Sales, outboxes and encrypted recovery
+entries persist transactionally in PostgreSQL instead of SQLite files.
 
 ## Endpoints
 
@@ -66,13 +53,16 @@ All paths below are under `/api/v1`:
 
 ## Deployment boundary
 
-For the Vercel frontend and persistent-server monorepo setup, see
-[DEPLOYMENT.md](../../DEPLOYMENT.md). Keep this SQLite-backed sync API on a
-persistent Node host; the web frontend calls this backend through a service binding at `/api/pos`,
-separately from these `/api/v1` endpoints.
+See [Neon and Vercel deployment](../../DEPLOYMENT.md). The runtime has no SQLite
+or local-file storage dependency. SQL migrations are versioned; run them before
+deploying application changes that require new schema. Keep the encryption key
+with a database restore and retain Neon backup/restore history.
 
-Deploy one API instance with persistent SQLite storage behind HTTPS, and set `POS_API_URL` to its HTTPS origin before launching the desktop. HTTP is permitted only for localhost development; redirects are rejected. Only one paired POS terminal is accepted per backend/business, matching this project's original scope and preserving its sequential invoice numbers. Pairing tokens authorize that trusted terminal to upload its validated offline work, including work by other locally authorized staff.
+The original one-business, one-paired-terminal scope remains. Transaction-scoped
+advisory locks serialize financial and sync decisions across server instances.
+Web and desktop server records are separate; this migration does not merge them.
+Old SQLite records are not automatically imported or deleted.
 
-This is not a multi-tenant service or a multi-terminal invoice allocator. Do not put unrelated businesses in one database. Offline permission revocations cannot take effect until the terminal reconnects. The browser web store now runs in this backend but remains independent; `/reports/events` exposes central uploaded records for its later integration. This change does not migrate that web store or deploy a public server.
-
-Verification: `npm test --prefix apps/backend` runs HTTP authentication/validation checks and an end-to-end desktop-storage → offline → restart → reconnect integration test, including lost responses, duplicate prevention, cached login, monthly payments and conflicts.
+`npm run test:neon` exercises the built frontend/backend and real Neon on a guarded
+disposable branch, including concurrency, retries and restart persistence.
+The existing SQLite tests retain coverage for offline desktop behavior.

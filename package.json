@@ -7,19 +7,21 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "install:deps": "pnpm install --frozen-lockfile",
-    "dev": "pnpm --parallel --filter './apps/*' dev",
-    "dev:desktop": "pnpm --filter @pos/desktop dev",
-    "dev:admin": "pnpm --filter @pos/admin-web dev",
-    "dev:backend": "pnpm --filter @pos/backend dev",
+    "install:deps": "corepack pnpm install --frozen-lockfile",
+    "dev": "corepack pnpm --parallel --filter './apps/*' dev",
+    "dev:desktop": "corepack pnpm --filter @pos/desktop dev",
+    "dev:admin": "corepack pnpm --filter @pos/admin-web dev",
+    "dev:backend": "corepack pnpm --filter @pos/backend dev",
     "lint": "eslint .",
-    "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build",
-    "build:web": "pnpm --filter @pos/admin-web build",
-    "start:web": "pnpm --filter @pos/admin-web start",
-    "test": "pnpm -r --if-present test",
-    "package:win": "pnpm --filter @pos/desktop package:win",
-    "package:demo": "pnpm --filter @pos/desktop package:demo"
+    "typecheck": "corepack pnpm --workspace-concurrency=1 --filter @pos/backend --filter @pos/admin-web --filter @pos/desktop -r typecheck",
+    "build": "corepack pnpm --workspace-concurrency=1 --filter @pos/backend --filter @pos/admin-web --filter @pos/desktop -r build",
+    "build:web": "corepack pnpm --filter @pos/admin-web build",
+    "start:web": "corepack pnpm --filter @pos/admin-web start",
+    "test": "corepack pnpm --workspace-concurrency=1 --filter @pos/backend --filter @pos/admin-web --filter @pos/desktop -r --if-present test",
+    "package:win": "corepack pnpm --filter @pos/desktop package:win",
+    "package:demo": "corepack pnpm --filter @pos/desktop package:demo",
+    "db:migrate": "corepack pnpm --filter @pos/backend db:migrate",
+    "test:neon": "corepack pnpm --filter @pos/backend test:neon"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -27,5 +29,9 @@
     "eslint": "10.14.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.1"
+  },
+  "dependencies": {
+    "@neon/config": "1.13.0",
+    "@neon/env": "2.1.0"
   }
 }

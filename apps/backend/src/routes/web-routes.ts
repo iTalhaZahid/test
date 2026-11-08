@@ -1,7 +1,10 @@
 import { Router, json } from 'express';
-import { getStore } from '../models/web-store.js';
+import type { WebStore } from '../models/web-store.js';
+import type { PgWebStore } from '../postgres/web-store.js';
 
-export function webRoutes() {
+type Run = <T>(work: (store: WebStore | PgWebStore) => Promise<T>) => Promise<T>;
+
+export function webRoutes(run: Run) {
   const router = Router();
   router.post('/', json({ limit: 2800000 }), async (request, response) => {
     const protocol = request.get('x-forwarded-proto')?.split(',')[0].trim() || request.protocol;
@@ -16,26 +19,28 @@ export function webRoutes() {
     const token = request.headers.cookie?.split(';').map(cookie => cookie.trim())
       .find(cookie => cookie.startsWith('pos-web-session='))?.slice('pos-web-session='.length);
     try {
-      const store = await getStore();
-      const { operation, args } = input;
-      if (operation === 'auth:state') {
-        response.json({ data: { user: store.user(token), demo: store.demo } }); return;
-      }
-      if (operation === 'auth:login' || operation === 'auth:logout') {
-        store.logout(token);
-        const result = operation === 'auth:login' ? await store.auth.login(args[0], args[1]) : null;
-        const session = result?.ok ? store.session(result.user) : '';
-        response.cookie('pos-web-session', session, {
+      const result = await run<{ data: unknown; status?: number; session?: string }>(async store => {
+        const { operation, args } = input;
+        if (operation === 'auth:state') return { data: { user: await store.user(token), demo: store.demo } };
+        if (operation === 'auth:login' || operation === 'auth:logout') {
+          await store.logout(token);
+          const login = operation === 'auth:login' ? await store.auth.login(args[0], args[1]) : null;
+          return { data: login, session: login?.ok ? await store.session(login.user) : '' };
+        }
+        if (!await store.user(token)) return { data: null, status: 401 };
+        return { data: await store.execute(token, operation, args) ?? null };
+      });
+      if (result.session !== undefined) {
+        response.cookie('pos-web-session', result.session, {
           httpOnly: true, sameSite: 'strict', secure: protocol === 'https',
-          path: '/', maxAge: session ? 8 * 60 * 60 * 1000 : 0,
+          path: '/', maxAge: result.session ? 8 * 60 * 60 * 1000 : 0,
         });
-        response.json({ data: result }); return;
       }
-      if (!store.user(token)) { response.status(401).json({ error: 'Sign in to continue.' }); return; }
-      response.json({ data: await store.execute(token, operation, args) ?? null });
+      if (result.status === 401) { response.status(401).json({ error: 'Sign in to continue.' }); return; }
+      response.json({ data: result.data });
     } catch (error) {
       const message = error instanceof Error && !('code' in error) ? error.message : 'Unable to complete the request. Please try again.';
-      response.status(400).json({ error: message });
+      response.status(typeof error === 'object' && error && 'code' in error ? 503 : 400).json({ error: message });
     }
   });
   return router;

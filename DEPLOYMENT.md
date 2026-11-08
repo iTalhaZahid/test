@@ -1,82 +1,107 @@
-# Vercel monorepo deployment
+# Neon and Vercel deployment
 
-The root `vercel.json` defines two services: `admin-web` (Next.js) and `backend`
-(Express). Electron stays a separately packaged desktop application.
+## Architecture
 
-The backend entry is explicitly ESM (`src/server.mts`), and its standalone build
-is `dist/server.mjs`. These extensions preserve the module format when a hosting
-runtime relocates the entry outside the backend package's `type: module` scope.
-
-For Vercel, the backend service runs type checking and uses `outputDirectory: "."`
-with its source entry. Do not change that to `dist`: the Services builder can
-flatten the compiled entry while retaining pnpm dependencies at workspace paths,
-causing module-format and missing-package startup errors. The standalone build
-command remains available for Docker and persistent Node hosting.
-
-## Services and routing
+The root `vercel.json` defines `admin-web` (Next.js) and `backend` (Express).
+Both web and sync data are now normal PostgreSQL rows in Neon. The running backend
+uses `src/postgres`, not the old SQLite stores. Electron retains its own SQLite
+stores for offline checkout and sync; browser and desktop server records remain
+separate, matching the existing application behavior.
 
 | Public path | Service | Behavior |
 | --- | --- | --- |
-| `/api/v1/*` | `backend` | Existing desktop login and synchronization API |
-| `/health` | `backend` | Process liveness, not storage readiness |
-| `/api/pos` | `admin-web` | Same-origin validation and proxy to backend |
+| `/api/v1/*` | `backend` | Desktop authentication and synchronization |
+| `/health` | `backend` | Process liveness, not database readiness |
+| `/api/pos` | `admin-web` | Same-origin validation and proxy through binding |
 | All other paths | `admin-web` | Next.js pages and assets |
 
-`admin-web` declares a service binding to `backend`, injected as `BACKEND_URL`.
-Do not set this variable manually in Vercel. Only the Next.js server route reads
-it at runtime; it is not a browser variable or a build-time setting. Its request
-calls the backend's `/api/pos`, which has no direct public rewrite. The backend
-still authenticates every operation using the existing web session cookie.
-Both services have public routes, but the web data endpoint is reached internally.
+`admin-web` binds to `backend` as `BACKEND_URL`. Vercel injects it at runtime;
+never set it manually or expose it through a `NEXT_PUBLIC_` variable. The backend
+web endpoint has no direct public rewrite. Both services retain application
+permission checks. Session cookies remain HttpOnly/SameSite, and HTTPS browser
+sessions receive Secure cookies even when internal transport uses HTTP.
 
-The frontend validates the browser Origin and request format before forwarding.
-It forwards only the cookie and JSON body to the backend, rejects redirects,
-sets a timeout, relays session cookies, and ensures HTTPS browser sessions have
-Secure cookies even when the internal transport is HTTP. A backend outage returns
-502; a missing Vercel binding returns 503. There is no local database fallback.
-The obsolete `POS_WEB_SERVER_URL` setting is no longer used and should be removed.
+The backend uses an explicit ESM entry (`src/server.mts`) with
+`outputDirectory: "."` to avoid the Vercel Services workspace dependency-path
+issue. Standalone builds produce `dist/server.mjs` for ordinary Node hosting.
 
-## Local development
+## Neon setup and migration
 
-From the repository root, install the workspace with Node 24 and pnpm 10.34.9:
+Neon is linked locally through the ignored `.neon` file. `neon.ts` declares only
+Postgres; it does not replace the existing application's authentication provider.
+The configured project is `old-shadow-38945301`, production branch `production`.
 
 ```sh
-corepack pnpm install --frozen-lockfile
-corepack pnpm dev:backend
+npx neon@latest init -y --org-id org-crimson-glade-80625709 --project-id old-shadow-38945301 --branch production --services postgres
+npx neon@latest deploy
 ```
 
-In a second terminal run `corepack pnpm dev:admin`, then open
-`http://127.0.0.1:3000`. The standalone frontend defaults to backend port 4000.
-For another port, set `BACKEND_URL` in the frontend process environment.
-For Vercel service routing and generated bindings, run `vercel dev` at the root.
+The CLI pulls `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct) into the
+root `.env.local`, or `.env` if that already exists. Those files are ignored.
+Generate a 32-byte hexadecimal `POS_WEB_ENCRYPTION_KEY` once and save it there;
+keep the same secret in Vercel and preserve it when restoring the database.
+Do not regenerate it for an existing database: it protects account verifiers and
+financial recovery records. For a private demo, also set `POS_WEB_DEMO=1`.
 
-## Preserve existing records
+```sh
+npm run db:migrate
+npm run build
+npm run dev:backend
+```
 
-Stop the old web server before changing storage ownership. Set
-`POS_WEB_DATA_DIR` in the backend process to the absolute path of the old
-`apps/admin-web/.data` directory, or copy that entire directory to persistent
-backend storage and point the setting there. Keep `pos.sqlite`, `recovery.sqlite`
-and `protection.key` together. Back up before moving; do not delete the old data.
-The default for new deployments is `POS_DATA_DIR/web` (or `.data/web`).
+In another terminal: `npm run dev:admin`, then visit `http://127.0.0.1:3000`.
+The backend dev/start/migration commands load the root `.env` and `.env.local`.
+Migrations use the direct URL; runtime requests reuse a small `pg` pool with the
+pooled URL and Vercel's `attachDatabasePool` lifecycle integration.
 
-Web records and sessions retain their existing schema and passwords. The desktop
-sync database (`POS_DATA_DIR/online.sqlite`) stays separate. This change does not
-merge desktop and browser financial records or their user accounts.
+The migrations create versioned `pos_web` and `pos_sync` schemas and indexes.
+The migration command records a checksum, seeds only missing bootstrap/demo
+accounts, and never resets existing passwords. Financial writes, outbox/recovery
+rows, recurring payments, and sync receipts use database transactions. Per-business
+transaction advisory locks preserve the existing one-business/one-terminal
+invoice ordering and prevent lost updates across instances. Recovery copies now
+live in encrypted PostgreSQL rows, not local files. Keep Neon backups/restore
+history; those rows are not an independent backup against deleting the database.
 
-## Vercel deployment
+Old SQLite files are neither deleted nor automatically imported. This setup
+initializes a new PostgreSQL database. If historical records must be retained,
+stop old writes and plan a verified import before switching that installation.
+Do not delete its SQLite databases or `protection.key`.
 
-1. Import the repository with Root Directory `.` and Node 24.x. Leave project-wide
-   build and output overrides unset; those settings belong to each service.
-2. Vercel injects `BACKEND_URL` through the binding. No external web data server
-   or manually configured backend hostname is required by the frontend.
-3. Migrate backend storage to a hosted database before using this on Vercel.
-   Both the web and sync stores still use local SQLite and the web encryption key
-   is still a local file. Vercel runtime storage is not a durable database.
-   Neither `/tmp` nor the service binding fixes this limitation.
-4. For a private demo on a persistent backend, set `POS_WEB_DEMO=1` there.
-   Public production provisioning for the web API is not implemented.
-5. After storage migration, verify login/logout, secure cookies, a saved financial
-   operation, and restart persistence in the actual deployed environment.
+## Vercel settings
+
+1. Import this repository with Root Directory `.` and Node 24.x. Leave project-wide
+   build/output overrides unset; use the settings in `vercel.json`.
+2. Add `DATABASE_URL`, `POS_WEB_ENCRYPTION_KEY`, and `POS_WEB_DEMO=1` to the backend
+   deployment environment (shared project variables also work). Copy actual values
+   from the ignored root environment file. Do not use the example placeholders.
+3. Run migrations with `DATABASE_URL_UNPOOLED` from a trusted local/CI environment
+   before redeploying. That direct URL need not be exposed to the running app.
+4. Remove `POS_DATA_DIR`, `POS_WEB_DATA_DIR`, and `POS_WEB_SERVER_URL` from Vercel.
+   There are no runtime SQLite files or local encryption keys in the backend.
+5. Redeploy the latest source. Vercel supplies `BACKEND_URL` itself.
+
+For Electron set `POS_API_URL` to the deployed public origin, without `/api/v1`.
+The terminal app adds that prefix. Do not point preview deployments at production
+records; use a separate Neon branch and its matching encryption key.
+
+## Verification
+
+For local Docker development, copy `.env.example` to `.env` and replace its
+encryption-key placeholder with a generated 64-hex-character key before running
+Compose. The backend connects to the Compose PostgreSQL service and migrates it
+before startup. The old `backend-data` volume is retained for recovery only;
+new records live in `postgres-data`. Docker was not exercised in the Neon checks.
+
+The opt-in `test:neon` suite starts the built frontend and backend, verifies their
+real API/binding path, roles, password changes, menu search, financial writes,
+retries, concurrent duplicates, sync receipts, and persistence across backend
+restarts. It requires a disposable branch named `pos-pg-migration-*` and refuses
+production. Pull that branch's Postgres env to `.env.neon-test`, append the same
+key and demo flag, run its migration, then run `npm run test:neon`.
+
+Legacy SQLite tests remain as regression coverage for desktop/offline behavior.
+No Vercel preview/production deployment is performed by `neon deploy` itself.
 
 ## First login
 
@@ -87,7 +112,6 @@ merge desktop and browser financial records or their user accounts.
 | Web demo | `demo` | `PosDemo123!` | Cashier |
 | Desktop sync | `superadmin` | `PosSuperAdmin123!` | Bootstrap superuser |
 
-Web demo accounts are seeded in development or when `POS_WEB_DEMO=1`.
-The sync superuser is created only when its database is empty. Change initial
-passwords immediately, then use Manage Admins to create administrators.
-Keep demo deployments private; these credentials are public.
+Web demo accounts require `POS_WEB_DEMO=1`. Change initial passwords, then use
+Manage Admins to create administrators. These public demo credentials require
+private demo hosting; a public production account-provisioning flow is not added.

@@ -1,3 +1,51 @@
+# Neon migration verification ? 2026-11-08
+
+- Linked Neon project `old-shadow-38945301`, branch `production`, using CLI OAuth.
+- `neon deploy`: `No changes ? branch production already matches the policy.`
+  Utilized services: Postgres. Pulled database variables into ignored `.env.local`.
+- Installed and consulted local `neon` and `neon-postgres` agent skills.
+- Added native PostgreSQL tables and stores for web accounts, catalog, sessions,
+  sales, expenses, recoveries, recurring payments, and desktop sync/receipts.
+  The production backend no longer opens SQLite or local key/data files.
+- Migration tested on `pos-pg-migration-20261108` before production. The temporary
+  branch has an expiry; it contains test fixtures, not production transactions.
+- `npm run db:migrate` on production: exit 0, migration applied/current and
+  bootstrap users initialized without resetting existing accounts.
+- `npm run build`: exit 0; backend, Next.js and Electron/Vite builds succeeded.
+- `npm test`: exit 0; 45 existing backend/web/desktop regression tests passed.
+- `node --env-file=../../.env.neon-test --import tsx --test src/postgres/neon.integration.test.ts`
+  from the backend directory: exit 0, one real end-to-end test passed in ~228 s.
+  Output: `PASS: frontend -> backend -> Neon; login, roles, password changes,
+  search, sale/expense/recovery, monthly payments, sync deduplication, concurrency,
+  restart persistence.` The test starts the built Next.js and Express servers.
+- Final integration also verifies that a sale and expense sharing an operation ID
+  retain separate encrypted recovery rows.
+- Production smoke test: built backend startup, superuser login, catalog read and
+  logout passed against the specified Neon production branch. No financial test
+  transactions were created in production.
+- Backend typecheck and lint of changed TypeScript passed.
+
+## Resolved setup failures and remaining limits
+
+The global Neon install ran out of disk space. The requested npx fallback worked
+with a workspace cache. Initial global plugin/skill setup failed; installing the
+Neon skills project-locally succeeded. CLI init initially could not find pnpm;
+Corepack installed its config dependencies, and a final init completed with agent
+setup skipped (the local skills were already installed).
+
+The first parallel build exhausted host memory. Sequential builds pass. The first
+live API run found a PostgreSQL case-sensitive alias issue, which was fixed before
+the full successful run. Desktop builds still emit existing chunk/directive warnings;
+Electron tests emit non-fatal Crashpad permission and module-type warnings.
+
+Vercel deployment was not run. Copy the actual `DATABASE_URL`,
+`POS_WEB_ENCRYPTION_KEY` and demo flag from the ignored environment file to Vercel,
+then redeploy. Keys/URLs were not committed. Historical SQLite records were not
+imported or deleted. Demo credentials are public; keep the demo private. Docker
+configuration was updated but not run. Earlier verification below is historical.
+
+---
+
 # Foundation verification
 
 For the subsequent SQLite/login and React Bits milestone, see

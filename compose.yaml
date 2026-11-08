@@ -20,7 +20,12 @@ services:
       context: .
     environment:
       PORT: "4000"
-      POS_DATA_DIR: /data
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pos}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pos}
+      DATABASE_URL_UNPOOLED: postgresql://${POSTGRES_USER:-pos}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pos}
+      POS_WEB_ENCRYPTION_KEY: ${POS_WEB_ENCRYPTION_KEY:?Generate a 64-character hexadecimal key in .env}
+      POS_WEB_DEMO: "1"
+      NODE_ENV: production
+    command: ["sh", "-c", "pnpm --filter @pos/backend db:migrate && pnpm --filter @pos/backend start"]
     volumes:
       - backend-data:/data
     ports:

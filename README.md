@@ -1,179 +1,81 @@
-# POS restaurant terminal and online sync API
+# POS restaurant terminal, web app and sync API
 
-Restaurant POS with local SQLite checkout, receipts, management, encrypted cached login and background synchronization. See [online API and offline-first setup](apps/backend/README.md) for current authentication, endpoints, deployment and sync behavior.
-
-## Next steps for this test repository
-
-The root `vercel.json` now declares the `admin-web` and `backend` services.
-See [the multi-service setup and storage blocker](DEPLOYMENT.md#vercel-deployment)
-before importing the repository root into Vercel. Express still needs a hosted
-database migration for Vercel; the persistent-server deployment below remains
-the working option for SQLite.
-
-1. Clone this repository and install Node 24 and pnpm 10.34.9.
-2. Run `corepack pnpm install --frozen-lockfile` from the repository root.
-3. For a local browser test, run `corepack pnpm dev:backend` and, in another
-   terminal, `corepack pnpm dev:admin`. Open
-   `http://127.0.0.1:3000`. Use the web credentials below.
-4. Follow [DEPLOYMENT.md](DEPLOYMENT.md) to run the persistent backend
-   and configure the Vercel services. Vercel injects `BACKEND_URL` into
-   `admin-web`; the web API now runs in Express. SQLite still needs migration
-   to hosted storage before Vercel production use.
-5. For the Electron terminal, run `corepack pnpm dev:backend`, then in another
-   PowerShell window set `$env:POS_API_URL='http://127.0.0.1:4000'` and run
-   `corepack pnpm dev:desktop`. Use the backend credentials below.
-
-### First login and first superuser
-
-These are built-in bootstrap/demo credentials, not private deployment secrets.
-Change the initial password immediately and keep test deployments private.
-Web and desktop-sync records are separate databases; their accounts do not sync
-with each other.
-
-| Where to sign in | Role | Username | Initial password |
-| --- | --- | --- | --- |
-| Browser web demo | Superuser | `superuser` | `PosSuper123!` |
-| Browser web demo | Administrator | `admin` | `PosAdmin123!` |
-| Browser web demo | Cashier | `demo` | `PosDemo123!` |
-| Electron terminal / Express API | Bootstrap superuser | `superadmin` | `PosSuperAdmin123!` |
-
-**Web:** development automatically seeds the demo superuser on first startup.
-For a private production-mode demonstration, set `POS_WEB_DEMO=1` on the
-persistent backend. Sign in as `superuser`, use **Change Password**,
-then **Manage Admins** to create your administrator. Restarting does not reset
-the password. Without demo mode the current web prototype has no production
-account provisioning flow; deploying the frontend does not add one.
-
-**Backend/Electron:** starting the backend with an empty database automatically
-creates `superadmin` with the superuser role. There is no separate registration
-step. Sign in from the first terminal to pair it, change the password, and use
-**Manage Admins** to create an administrator. An existing database is never reset
-or given another bootstrap user. Keep `POS_DATA_DIR` on persistent storage and
-back it up; do not delete it to recover a login. This backend accepts one paired
-terminal per business.
-
-The Vercel frontend forwards browser sessions to Express through its service binding.
-SQLite databases, encryption keys, local environment files, recordings and the
-unfinished `.deployment` copy are not part of this test-repository publication.
-
-## Workspace
-
-See [Vercel monorepo deployment](DEPLOYMENT.md) to deploy the Next.js frontend
-on Vercel using the backend service binding.
+A pnpm monorepo with an offline Electron POS, a Next.js web interface, and an
+Express backend. Both server APIs now use Neon PostgreSQL; the desktop keeps
+SQLite locally so checkout and cached login continue to work offline.
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/desktop` | Electron main/preload and React + Tailwind shell; Windows NSIS installer |
-| `apps/admin-web` | Next.js + Tailwind online admin landing page |
-| `apps/backend` | MVC Express API with authentication, durable sync and reports |
-| `packages/shared` | Strict TypeScript settings consumed by all three apps |
+| `apps/admin-web` | Next.js web UI and same-origin API proxy |
+| `apps/backend` | PostgreSQL web data, accounts, financial records and desktop sync |
+| `apps/desktop` | Electron terminal, local SQLite, receipts and offline sync |
+| `packages/shared` | Shared TypeScript configuration |
 
-## Prerequisites and setup
+## Setup and next steps
 
-Use Node 24.22.2 LTS (`.node-version` / `.nvmrc`) and pnpm 10.34.9.
-Windows x64 is required for the documented installer verification. Docker Desktop
-with Linux containers is optional and used only for the server stack.
+Use Node 24 and pnpm 10.34.9. From the repository root:
 
-```powershell
-npm install --global pnpm@10.34.9
-pnpm install --frozen-lockfile
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+```sh
+corepack pnpm install --frozen-lockfile
+npx neon@latest init -y --org-id org-crimson-glade-80625709 --project-id old-shadow-38945301 --branch production --services postgres
+npx neon@latest deploy
 ```
 
-`pnpm install:deps` is an alias for the frozen-lockfile install. Commit
-`pnpm-lock.yaml` with dependency changes; do not create per-app lockfiles.
+Neon writes the database URLs into ignored `.env.local` (or `.env`). Add a
+64-character hexadecimal `POS_WEB_ENCRYPTION_KEY` and `POS_WEB_DEMO=1` there
+for this private demo. Preserve the encryption key; do not rotate it casually.
+See [deployment instructions](DEPLOYMENT.md) for generation and Vercel settings.
 
-```powershell
-pnpm dev                 # all three apps
-pnpm dev:desktop         # desktop alone: builds local assets, then launches
-pnpm dev:admin           # http://127.0.0.1:3000
-pnpm dev:backend         # http://127.0.0.1:4000/health
+```sh
+npm run db:migrate
+npm run build
+npm run dev:backend
 ```
 
-The desktop requires a reachable backend for each user?s first login. After online verification, cached login and normal operations work offline; encrypted cached login is valid for 30 days. Its development command intentionally builds and loads local files,
-matching packaged startup; restart it to pick up edits. Backend watch and Next.js
-development reload are enabled. A main-process worker syncs local changes in the background; checkout never waits for it.
-If launching from a tool that sets `ELECTRON_RUN_AS_NODE=1`, first run
-`Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue` in PowerShell.
+In another terminal run `npm run dev:admin` and open `http://127.0.0.1:3000`.
+For Vercel import Root Directory `.` and set `DATABASE_URL`,
+`POS_WEB_ENCRYPTION_KEY` and `POS_WEB_DEMO=1`. The service binding injects
+`BACKEND_URL`; do not add it yourself. SQLite directory variables are no longer
+used by the deployed backend.
 
-The backend defaults to port 4000 (`$env:PORT='4001'` overrides it). `/health`
-returns `{"status":"ok"}` and measures process liveness only. It is not a storage readiness check. The API uses persistent SQLite storage for accounts and synchronized records. Environment examples contain local-only dummy
-values; `.env` files are ignored. No environment loader is needed by this scaffold.
+## First login and administrators
 
-## Local server stack
+| Interface | Role | Username | Initial password |
+| --- | --- | --- | --- |
+| Browser demo | Superuser | `superuser` | `PosSuper123!` |
+| Browser demo | Administrator | `admin` | `PosAdmin123!` |
+| Browser demo | Cashier | `demo` | `PosDemo123!` |
+| Electron / sync API | Bootstrap superuser | `superadmin` | `PosSuperAdmin123!` |
 
-```powershell
-Copy-Item .env.example .env
-docker compose config --quiet
-docker compose up --build --wait
-Invoke-RestMethod http://127.0.0.1:4000/health
-docker compose exec postgres pg_isready -U pos -d pos
-docker compose down
+The migration seeds missing accounts without resetting passwords. Browser demo
+accounts require `POS_WEB_DEMO=1`. Sign in as the appropriate superuser, use
+Change Password, then Manage Admins. Web and desktop-sync accounts and records
+remain separate. Keep this demo private: these initial credentials are public.
+
+For the terminal, set `POS_API_URL` to the backend's public HTTPS origin (or
+`http://127.0.0.1:4000` locally), then run the desktop app. Its first online login
+pairs the terminal; subsequent cached logins and normal checkout can work offline.
+Only one paired terminal is supported per backend/business.
+
+## Checks
+
+```sh
+corepack pnpm lint
+corepack pnpm --filter @pos/backend test
+corepack pnpm --filter @pos/admin-web test
+npm run build
+npm run test:neon
 ```
 
-Do not run native and container services on the same ports simultaneously.
-Docker includes only the backend and PostgreSQL. The desktop is distributed as a
-Windows installer; admin is a separate Next.js app suitable for Vercel (project
-root `apps/admin-web`, with workspace packages available). The backend container
-can later be hosted on Render, AWS, or Oracle Cloud. No hosting is configured or
-deployed here. Run `pnpm dev:admin` separately for the admin app on port 3000.
+The Neon integration suite requires the disposable test branch/environment
+explained in [DEPLOYMENT.md](DEPLOYMENT.md#verification). It tests the built
+frontend and backend against real PostgreSQL and refuses production.
+Builds run sequentially to reduce peak memory use.
 
-Docker ports bind to loopback: API 4000, PostgreSQL 5432. PostgreSQL uses the
-`postgres-data` named volume and a health check. `down` preserves that volume;
-`down --volumes` deletes database data. The API stores sync data in the `backend-data` volume. The existing PostgreSQL service is retained but not used by this implementation.
-Use URL-safe local database credentials in this example Compose setup.
-The image builds are development infrastructure, not production deployment.
+Old SQLite server files are preserved locally and are not automatically imported.
+Plan a verified historical import before replacing an existing installation.
+Environment files, keys, databases, recordings and the unfinished `.deployment`
+copy are excluded from publication.
 
-Both interfaces use Tailwind CSS 4, compiled locally through its Vite plugin on
-desktop and PostCSS plugin in Next.js. There is no runtime CSS CDN dependency.
-
-## Windows installer
-
-For the separately named demo installer, run `pnpm package:demo`. It follows the same first-online-login requirement.
-See [demo installer instructions](apps/desktop/DEMO.md) for the output file,
-bundled dependencies, credentials, and separate demo data directories.
-The release restrictions below refer to the standard `package:win` build.
-
-```powershell
-pnpm package:win
-Get-FileHash apps/desktop/release/POS-Terminal-0.1.0-Setup.exe -Algorithm SHA256
-Start-Process apps/desktop/release/POS-Terminal-0.1.0-Setup.exe -Wait
-```
-
-The NSIS wizard installs per user and creates desktop and Start Menu shortcuts.
-Launch **POS Terminal** with the server stack stopped; confirm the shell renders.
-Close and reopen it, then install the same build again and check launch. Packaging
-success alone does not prove installation or launch. The package is unsigned;
-Windows may show an unknown-publisher/SmartScreen prompt. Signing and publishing
-are outside this task. App data is not deleted by the installer configuration.
-
-SQLite and filesystem access belong exclusively in the Electron main process.
-The renderer is sandboxed, context-isolated, and has Node integration disabled;
-preload exposes narrow authentication, local management, financial, printing and sync-status methods. New windows,
-navigation, and permissions are denied. Assets and fonts are bundled/local.
-SQLite now initializes in the app-owned user data directory using Electron's
-built-in driver. Online users are provisioned by the backend; demo credentials are not automatically online identities. See [desktop notes](apps/desktop/DESKTOP.md) for storage,
-the React Bits visual panel, and the production provisioning boundary.
-
-## Constraints for subsequent milestones
-
-- One active Windows terminal per business; each cashier has an individual
-  account. New financial entries originate on that terminal. Web is online admin
-  management and reporting only.
-- Current QAR amounts use integer minor units. Customer repayments are dated customer-level
-  ledger entries with the accepting cashier; no bill ID is required.
-- Saved bills are read-only for cashiers. Admin corrections create audited
-  revisions when implemented. Restaurant receipts and printing are implemented.
-- Offline financial writes commit the transaction and outbox atomically,
-  then make a separate local recovery copy durable before reporting success.
-  Retain recovery copies until the server confirms durable commit. Recovery and
-  retries preserve original operation IDs. Local recovery copies do not protect against failure of the entire disk.
-- Initial business time zone is Asia/Karachi; reporting weeks start Monday.
-
-Online login, cached offline login, local financial workflows, receipts and background sync are implemented. See [backend documentation](apps/backend/README.md) for the one-terminal deployment boundary, conflict handling and remaining admin-web integration boundary. No CI
-convention existed in this workspace; the root checks are ready for a later CI job.
-
-See `VERIFICATION.md` for checks performed on the setup host and limitations.
+See [backend details](apps/backend/README.md), [desktop setup](apps/desktop/DESKTOP.md),
+[demo installer](apps/desktop/DEMO.md), and [verification notes](VERIFICATION.md).

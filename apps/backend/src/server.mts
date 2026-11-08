@@ -1,13 +1,8 @@
-import { createApp } from './app.js';
-import { PosModel } from './models/pos-model.js';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
+import { createPostgresApp } from './postgres/app.js';
+import { createPool } from './postgres/database.js';
 
-const directory=path.resolve(process.env.POS_DATA_DIR??'.data');
-mkdirSync(directory,{recursive:true});
-const model=new PosModel(path.join(directory,'online.sqlite'));
-await model.bootstrap();
-const app=createApp(model);
+const pool = createPool();
+const app = createPostgresApp(pool);
 export default app;
 
 const port = Number(process.env.PORT ?? 4000);
@@ -23,8 +18,8 @@ server.on('error', (error) => {
 });
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
-    server.close((error) => {
-      model.close();
+    server.close(async (error) => {
+      await pool.end();
       if (error) console.error(error);
       process.exit(error ? 1 : 0);
     });

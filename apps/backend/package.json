@@ -4,19 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.mts",
+    "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx --watch src/server.mts",
     "build": "tsc -p tsconfig.build.json --noEmit && esbuild src/server.mts --bundle --platform=node --format=esm --packages=external --target=node24 --outfile=dist/server.mjs",
-    "start": "node dist/server.mjs",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local dist/server.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/app.test.ts src/models/web-store.test.ts scripts/sync.integration.test.mjs"
+    "test": "tsx --test src/app.test.ts src/models/web-store.test.ts scripts/sync.integration.test.mjs",
+    "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx scripts/migrate.mts",
+    "test:neon": "node --env-file-if-exists=../../.env.neon-test --import tsx --test src/postgres/neon.integration.test.ts"
   },
   "dependencies": {
-    "express": "5.3.0"
+    "@vercel/functions": "3.11.0",
+    "express": "5.3.0",
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@pos/shared": "workspace:*",
     "@types/express": "5.0.6",
-    "tsx": "4.23.15",
-    "esbuild": "0.28.2"
+    "@types/pg": "8.23.1",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
   }
 }
