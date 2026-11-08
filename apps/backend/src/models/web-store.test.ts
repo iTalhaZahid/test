@@ -4,52 +4,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { NextRequest } from 'next/server';
-import { WebStore, getStore } from './store';
-import { POST } from '../app/api/pos/route';
+import { WebStore, getStore } from './web-store.js';
+import { createApp } from '../app.js';
+import { once } from 'node:events';
 import { businessDate } from '../../../desktop/src/main/sales-store';
-
-test('Vercel forwards sessions to persistent storage and fails closed without it', async () => {
-  const originalFetch = globalThis.fetch;
-  const originalUrl = process.env.POS_WEB_SERVER_URL;
-  const originalVercel = process.env.VERCEL;
-  const request = (origin = 'https://pos.example.com') => new NextRequest('https://pos.example.com/api/pos', {
-    method: 'POST', headers: { origin, 'content-type': 'application/json', cookie: 'pos-web-session=token' },
-    body: JSON.stringify({ operation: 'auth:state', args: [] }),
-  });
-  try {
-    process.env.VERCEL = '1';
-    delete process.env.POS_WEB_SERVER_URL;
-    assert.equal((await POST(request())).status, 503);
-    process.env.POS_WEB_SERVER_URL = 'https://data.example.com';
-    let calls = 0;
-    globalThis.fetch = async (url, options) => {
-      calls++;
-      assert.equal(String(url), 'https://data.example.com/api/pos');
-      const headers = new Headers(options?.headers);
-      assert.equal(headers.get('origin'), 'https://data.example.com');
-      assert.equal(headers.get('cookie'), 'pos-web-session=token');
-      assert.equal(options?.redirect, 'error');
-      return new Response('{"data":null}', { headers: { 'Set-Cookie': 'pos-web-session=new; Path=/; HttpOnly; Secure; SameSite=Strict' } });
-    };
-    assert.equal((await POST(request('https://attacker.example'))).status, 403);
-    assert.equal(calls, 0);
-    const response = await POST(request());
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get('set-cookie')!, /HttpOnly; Secure/);
-    assert.deepEqual(await response.json(), { data: null });
-    globalThis.fetch = async () => { throw new Error('offline'); };
-    assert.equal((await POST(request())).status, 502);
-    process.env.POS_WEB_SERVER_URL = 'http://data.example.com';
-    assert.equal((await POST(request())).status, 502);
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (originalUrl === undefined) delete process.env.POS_WEB_SERVER_URL;
-    else process.env.POS_WEB_SERVER_URL = originalUrl;
-    if (originalVercel === undefined) delete process.env.VERCEL;
-    else process.env.VERCEL = originalVercel;
-  }
-});
 
 test('web bridge enforces superuser and cashier permissions and stores monthly status',async()=>{
   const directory=mkdtempSync(path.join(tmpdir(),'pos-web-permissions-'));
@@ -153,17 +111,25 @@ test('HTTP boundary rejects foreign origins and anonymous writes; cookie login/l
   const directory = mkdtempSync(path.join(tmpdir(), 'pos-web-http-'));
   process.env.POS_WEB_DATA_DIR = directory;
   process.env.POS_WEB_DEMO = '1';
-  const request = (operation: string, args: unknown[] = [], cookie = '', origin = 'http://localhost:3000') => POST(new NextRequest('http://localhost:3000/api/pos', {
+  const server = createApp().listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const base = `http://127.0.0.1:${address.port}`;
+  const request = (operation: string, args: unknown[] = [], cookie = '', origin = base) => fetch(`${base}/api/pos`, {
     method: 'POST', headers: { origin, 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ operation, args }),
-  }));
+  });
   try {
-    const loopback = await POST(new NextRequest('http://127.0.0.1:3000/api/pos', {
-      method: 'POST', headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operation: 'auth:state', args: [] }),
-    }));
-    assert.equal(loopback.status, 200);
+    assert.equal((await request('auth:state')).status, 200);
     assert.equal((await request('auth:login', ['admin', 'PosAdmin123!'], '', 'https://foreign.example')).status, 403);
     assert.equal((await request('management:save', [{}])).status, 401);
+    assert.equal((await request('auth:state', [1, 2, 3, 4, 5])).status, 400);
+    const secureLogin = await fetch(`${base}/api/pos`, {
+      method: 'POST', headers: { Origin: base.replace('http:', 'https:'), 'X-Forwarded-Proto': 'https', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: 'auth:login', args: ['admin', 'PosAdmin123!'] }),
+    });
+    assert.equal(secureLogin.status, 200);
+    assert.match(secureLogin.headers.get('set-cookie')!, /Secure/i);
     const login = await request('auth:login', ['admin', 'PosAdmin123!']);
     assert.equal((await login.json()).data.ok, true);
     const setCookie = login.headers.get('set-cookie')!;
@@ -172,6 +138,16 @@ test('HTTP boundary rejects foreign origins and anonymous writes; cookie login/l
     assert.equal((await (await request('auth:state', [], cookie)).json()).data.user.role, 'admin');
     const menu = await (await request('management:list', ['menu', ''], cookie)).json();
     assert.ok(menu.data.length > 0);
+    const store = await getStore();
+    const actor = store.user(cookie.slice('pos-web-session='.length));
+    assert.ok(actor);
+    store.management.save(actor, {id:'',kind:'recurring',name:'HTTP rent',phone:'',passport:'',identity:'',pricePaisa:100000,quantity:0,shopId:'main-shop',expenseType:'Rent',startMonth:'2026-11'});
+    const monthly = store.management.monthly(actor, '2026-11').find(row => row.name === 'HTTP rent');
+    assert.ok(monthly);
+    const paymentArgs = [monthly.id, '2026-11', 25000, 'http-monthly-payment'];
+    assert.equal((await request('management:record-payment', paymentArgs, cookie)).status, 200);
+    assert.equal((await request('management:record-payment', paymentArgs, cookie)).status, 200);
+    assert.equal(store.management.monthly(actor, '2026-11').find(row => row.id === monthly.id)?.paidMinor, 25000);
     assert.equal((await request('expenses:list', ['2000-01-01', '2099-12-31', 'main-shop'], cookie)).status, 200);
     assert.equal((await request('creditors:repayments', ['2000-01-01', '2099-12-31', 'main-shop'], cookie)).status, 200);
     assert.equal((await request('management:save', [{}], cookie)).status, 400);
@@ -182,6 +158,7 @@ test('HTTP boundary rejects foreign origins and anonymous writes; cookie login/l
     (await getStore()).close();
     delete (globalThis as typeof globalThis & { posWebStore?: WebStore }).posWebStore;
     delete process.env.POS_WEB_DATA_DIR; delete process.env.POS_WEB_DEMO;
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -216,3 +193,4 @@ test('hot reload replaces stale management services and preserves saved data',as
     rmSync(directory,{recursive:true,force:true});
   }
 });
+

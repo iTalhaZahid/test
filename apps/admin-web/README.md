@@ -1,16 +1,17 @@
 # POS web
 
 For Vercel, follow [the monorepo deployment guide](../../DEPLOYMENT.md).
-Set `POS_WEB_SERVER_URL` on Vercel to forward API operations to this app running
-on a persistent Node server; local storage remains on that server.
+Vercel injects `BACKEND_URL` through the service binding so API operations run
+in Express. The frontend no longer opens local storage.
 
 Shop management, cashier assignments, and sales/expense/credit shop filters are
 available. See [shop demo data and credentials](../desktop/SHOPS.md).
 
-Run `pnpm dev:admin` from the repository root, then open http://127.0.0.1:3000.
+Run `pnpm dev:backend` and `pnpm dev:admin` in separate terminals from the
+repository root, then open http://127.0.0.1:3000.
 With dependencies already installed, `npm --prefix apps/admin-web run dev` also works.
 Requires Node 24 and the workspace dependencies. The web app imports the desktop
-React screens, Tailwind styles, contracts, and SQLite stores directly. Login,
+React screens, Tailwind styles, and contracts. The backend reuses its SQLite stores. Login,
 role permissions, management, checkout, expenses, credit recovery, report filters,
 QAR amounts, business dates, validation, and duplicate-operation handling follow
 the desktop implementation. No Electron runtime is loaded in the browser.
@@ -23,23 +24,18 @@ Development accounts match the desktop demo:
 | Cashier | `demo` | `PosDemo123!` |
 | Sample cashier | `cashier.ayesha` / `cashier.bilal` | `PosCashier123!` |
 
-The server stores records in `apps/admin-web/.data` when started through pnpm.
-Set `POS_WEB_DATA_DIR` to an absolute directory to override it. Keep the entire
-directory, including `protection.key`, together when backing up or restoring.
-Credentials and recovery payloads use AES-GCM protection; protect filesystem
-access to the key and databases. Recovery on the same disk is not a disk backup.
-Browser sessions use HttpOnly, SameSite cookies, expire after eight hours, and
-survive server restarts. HTTPS requests receive Secure cookies. Every operation
-checks authentication and uses the desktop's server-side permission/validation rules.
+The browser calls the same-origin `/api/pos` Next.js route. It validates requests
+and forwards them through the runtime `BACKEND_URL` binding to Express. The
+frontend owns no SQLite databases or encryption keys. Run `pnpm dev:backend`
+alongside this app locally; standalone development defaults to port 4000.
+On Vercel do not set `BACKEND_URL` yourself; the root service binding injects it.
 
-This is the desktop **local prototype** available through a browser. Web records
-are separate from desktop records; there is no cloud sync. The browser needs its
-Node server running and reachable. Use one persistent Node server, not an edge,
-serverless, or multi-host deployment. The server needs the workspace desktop
-source at build time. Production builds disable demo access unless
-`POS_WEB_DEMO=1` is explicitly set for a private demonstration. Shared demo
-credentials are not suitable for a public production service. Behind a proxy,
-preserve the public request origin/host so same-origin request checks succeed.
+Storage, authentication, and operations now live in `apps/backend`. Existing web
+records must be retained by pointing the backend's `POS_WEB_DATA_DIR` to their
+absolute directory or copying the complete directory, including `protection.key`.
+See [deployment and data-preservation instructions](../../DEPLOYMENT.md).
+Web and desktop sync records remain separate. Both backend stores still require
+persistent storage; the binding does not migrate SQLite to a hosted database.
 
 Checks: `pnpm --filter @pos/admin-web test`,
 `pnpm --filter @pos/admin-web typecheck`, and
@@ -47,14 +43,14 @@ Checks: `pnpm --filter @pos/admin-web test`,
 
 ## Replace local records with demo data
 
-Stop the web server, then run from the repository root:
+Stop the backend, then run from the repository root:
 
 ```sh
 corepack pnpm --filter @pos/admin-web test
-node apps/admin-web/scripts/replace-demo-data.mjs --replace
+corepack pnpm --filter @pos/backend exec tsx ../admin-web/scripts/replace-demo-data.mjs --replace
 ```
 
-This replaces `apps/admin-web/.data` with three shops, registered employees and
+This replaces `apps/backend/.data/web` with three shops, registered employees and
 linked salaries, monthly payments, and 30 days of sales, expenses and credit
 recoveries. It retains the entire previous database directory in an ignored
 `.data-backup-<timestamp>` folder. Keep that folder private: it includes the old

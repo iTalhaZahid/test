@@ -1,90 +1,83 @@
 # Vercel monorepo deployment
 
-This repository is a pnpm monorepo. Keep `apps/*`, `packages/*` and the root
-lockfile together; no duplicate frontend/backend directories are needed.
+The root `vercel.json` defines two services: `admin-web` (Next.js) and `backend`
+(Express). Electron stays a separately packaged desktop application.
 
-## Persistent data server
+## Services and routing
 
-The web application and desktop sync API use different SQLite stores. Run each
-as one persistent Node 24 process with a durable disk and HTTPS in front of it.
-Do not deploy their storage on Vercel or use `/tmp` for financial records.
+| Public path | Service | Behavior |
+| --- | --- | --- |
+| `/api/v1/*` | `backend` | Existing desktop login and synchronization API |
+| `/health` | `backend` | Process liveness, not storage readiness |
+| `/api/pos` | `admin-web` | Same-origin validation and proxy to backend |
+| All other paths | `admin-web` | Next.js pages and assets |
 
-For the web data server, install from the repository root:
+`admin-web` declares a service binding to `backend`, injected as `BACKEND_URL`.
+Do not set this variable manually in Vercel. Only the Next.js server route reads
+it at runtime; it is not a browser variable or a build-time setting. Its request
+calls the backend's `/api/pos`, which has no direct public rewrite. The backend
+still authenticates every operation using the existing web session cookie.
+Both services have public routes, but the web data endpoint is reached internally.
+
+The frontend validates the browser Origin and request format before forwarding.
+It forwards only the cookie and JSON body to the backend, rejects redirects,
+sets a timeout, relays session cookies, and ensures HTTPS browser sessions have
+Secure cookies even when the internal transport is HTTP. A backend outage returns
+502; a missing Vercel binding returns 503. There is no local database fallback.
+The obsolete `POS_WEB_SERVER_URL` setting is no longer used and should be removed.
+
+## Local development
+
+From the repository root, install the workspace with Node 24 and pnpm 10.34.9:
 
 ```sh
 corepack pnpm install --frozen-lockfile
-corepack pnpm build:web
-corepack pnpm start:web
+corepack pnpm dev:backend
 ```
 
-Set `POS_WEB_DATA_DIR` to an absolute persistent directory. Preserve the entire
-directory, including `protection.key`, in backups. Leave `POS_WEB_SERVER_URL`
-and `VERCEL` unset on this server. Serve it at an HTTPS origin such as
-`https://pos-data.example.com`; its `/api/pos` endpoint handles web requests.
-The existing web implementation only enables accounts in demo mode. For a
-private demonstration set `POS_WEB_DEMO=1`; its shared demo credentials make
-it unsuitable for a public production service.
+In a second terminal run `corepack pnpm dev:admin`, then open
+`http://127.0.0.1:3000`. The standalone frontend defaults to backend port 4000.
+For another port, set `BACKEND_URL` in the frontend process environment.
+For Vercel service routing and generated bindings, run `vercel dev` at the root.
 
-The Express desktop sync service still follows
-[its deployment instructions](apps/backend/README.md). It is not a replacement
-for the web data server: `/api/v1` and `/api/pos` have different contracts.
+## Preserve existing records
 
-## Vercel multi-service project
+Stop the old web server before changing storage ownership. Set
+`POS_WEB_DATA_DIR` in the backend process to the absolute path of the old
+`apps/admin-web/.data` directory, or copy that entire directory to persistent
+backend storage and point the setting there. Keep `pos.sqlite`, `recovery.sqlite`
+and `protection.key` together. Back up before moving; do not delete the old data.
+The default for new deployments is `POS_DATA_DIR/web` (or `.data/web`).
 
-The root `vercel.json` defines `admin-web` (Next.js) and `backend` (Express).
-Import the repository with **Root Directory** set to the repository root (`.`),
-select Node **24.x**, and leave project-wide build/output overrides unset.
-Build and install settings belong to the individual services.
+Web records and sessions retain their existing schema and passwords. The desktop
+sync database (`POS_DATA_DIR/online.sqlite`) stays separate. This change does not
+merge desktop and browser financial records or their user accounts.
 
-Public routing preserves the original paths:
+## Vercel deployment
 
-| Path | Service |
-| --- | --- |
-| `/api/v1/*` | `backend` |
-| `/health` | `backend` |
-| All other paths, including `/api/pos` | `admin-web` |
+1. Import the repository with Root Directory `.` and Node 24.x. Leave project-wide
+   build and output overrides unset; those settings belong to each service.
+2. Vercel injects `BACKEND_URL` through the binding. No external web data server
+   or manually configured backend hostname is required by the frontend.
+3. Migrate backend storage to a hosted database before using this on Vercel.
+   Both the web and sync stores still use local SQLite and the web encryption key
+   is still a local file. Vercel runtime storage is not a durable database.
+   Neither `/tmp` nor the service binding fixes this limitation.
+4. For a private demo on a persistent backend, set `POS_WEB_DEMO=1` there.
+   Public production provisioning for the web API is not implemented.
+5. After storage migration, verify login/logout, secure cookies, a saved financial
+   operation, and restart persistence in the actual deployed environment.
 
-There are no internal-only services or service bindings. The frontend's server
-calls the external persistent web data server through `POS_WEB_SERVER_URL`;
-it does not call the Express desktop sync API. Binding those services would not
-make their incompatible APIs interchangeable. Electron is packaged separately;
-the root Dockerfile is an alternative backend deployment, not another service.
+## First login
 
-**Storage blocker:** the Express service still requires persistent local SQLite.
-This multi-service configuration establishes build/routing ownership but does
-not make the backend production-ready on Vercel. Its startup attempts to open
-the database, which can fail on a read-only filesystem; temporary storage would
-lose records. Migrate that service to a hosted database before deploying it on
-Vercel. Until then, use the frontend-only deployment below with persistent Node
-servers. Do not point a real terminal at an ephemeral backend.
+| API | Username | Initial password | Role |
+| --- | --- | --- | --- |
+| Web demo | `superuser` | `PosSuper123!` | Superuser |
+| Web demo | `admin` | `PosAdmin123!` | Administrator |
+| Web demo | `demo` | `PosDemo123!` | Cashier |
+| Desktop sync | `superadmin` | `PosSuperAdmin123!` | Bootstrap superuser |
 
-Set `POS_WEB_SERVER_URL` to the external HTTPS web data server for the frontend.
-Do not set it to the public deployment origin, which would create a proxy loop.
-For local service routing/bindings use `vercel dev` from the repository root;
-the SQLite server requires a writable local data directory. Local standalone
-development with the existing pnpm commands is also supported.
-
-## Vercel frontend-only alternative
-
-1. Import this repository in Vercel.
-2. Set **Root Directory** to `apps/admin-web` and enable **Include source files
-   outside of the Root Directory in the Build Step**. The app reuses desktop
-   components and workspace TypeScript settings.
-3. Select Node **24.x**. The app's `vercel.json` selects Next.js, installs with
-   the pinned pnpm version, skips the Electron binary download, and builds only
-   this web app. Keep the output directory as `.next`.
-4. Set `POS_WEB_SERVER_URL=https://pos-data.example.com` in each intended
-   deployment environment, then deploy. Do not set `POS_WEB_DEMO` or data paths
-   on Vercel. Use a separate data server for previews that must not modify
-   production records.
-5. Verify login/logout, reload, and a saved operation in the deployed app.
-
-Browser requests remain same-origin at `/api/pos`. The Vercel route validates
-the origin and request format, forwards cookies over HTTPS to the data server,
-and returns session cookies to the browser. Redirects are rejected. An upstream
-failure returns 502; missing configuration on Vercel returns 503 without opening
-local storage. It never silently substitutes an empty database.
-
-The Vite SPA rewrite and legacy `server.js` build configuration do not apply
-here: this frontend is Next.js. The root multi-service configuration and the
-frontend-only project are alternatives; choose the matching Root Directory.
+Web demo accounts are seeded in development or when `POS_WEB_DEMO=1`.
+The sync superuser is created only when its database is empty. Change initial
+passwords immediately, then use Manage Admins to create administrators.
+Keep demo deployments private; these credentials are public.

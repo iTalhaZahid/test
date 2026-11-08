@@ -107,9 +107,9 @@ export async function getStore() {
     globalStore.posWebStore.close();
     delete globalStore.posWebStore;
   }
-  // shortcut: one persistent Node server; use the backend before scaling to multiple hosts.
+  // shortcut: SQLite requires one persistent backend; migrate storage before scaling.
   const store = globalStore.posWebStore ??= new WebStore(
-    path.resolve(/* turbopackIgnore: true */ process.env.POS_WEB_DATA_DIR || '.data'),
+    path.resolve(/* turbopackIgnore: true */ process.env.POS_WEB_DATA_DIR || path.join(process.env.POS_DATA_DIR || '.data', 'web')),
     process.env.NODE_ENV !== 'production' || process.env.POS_WEB_DEMO === '1',
   );
   await store.ready;

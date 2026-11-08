@@ -1,21 +1,19 @@
-// Explicit local admin-web reset: build the replacement first, then retain the entire old directory as a backup.
+// Explicit local backend web-store reset: build the replacement first, then retain the entire old directory as a backup.
 import assert from 'node:assert/strict';
 import process from 'node:process';
 import console from 'node:console';
 import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
+import { WebStore } from '../../backend/src/models/web-store.ts';
 import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 assert.equal(process.argv[2], '--replace', 'Run with --replace only when replacement of all local web records is authorized and the POS server is stopped.');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const require=createRequire(import.meta.url);
-const { WebStore }=require('../.test-dist/apps/admin-web/src/server/store.js');
-const target=path.join(root,'.data');
+const target=path.resolve(root,'../backend/.data/web');
 const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-const staging=path.join(root,`.data-new-${stamp}`),backup=path.join(root,`.data-backup-${stamp}`);
-mkdirSync(staging);
+const staging=path.join(path.dirname(target),`.data-new-${stamp}`),backup=path.join(path.dirname(target),`.data-backup-${stamp}`);
+mkdirSync(staging, { recursive: true });
 const store=new WebStore(staging,true);
 const RealDate=Date;
 const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new RealDate());

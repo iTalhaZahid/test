@@ -5,18 +5,20 @@ Restaurant POS with local SQLite checkout, receipts, management, encrypted cache
 ## Next steps for this test repository
 
 The root `vercel.json` now declares the `admin-web` and `backend` services.
-See [the multi-service setup and storage blocker](DEPLOYMENT.md#vercel-multi-service-project)
+See [the multi-service setup and storage blocker](DEPLOYMENT.md#vercel-deployment)
 before importing the repository root into Vercel. Express still needs a hosted
 database migration for Vercel; the persistent-server deployment below remains
 the working option for SQLite.
 
 1. Clone this repository and install Node 24 and pnpm 10.34.9.
 2. Run `corepack pnpm install --frozen-lockfile` from the repository root.
-3. For a local browser test, run `corepack pnpm dev:admin` and open
+3. For a local browser test, run `corepack pnpm dev:backend` and, in another
+   terminal, `corepack pnpm dev:admin`. Open
    `http://127.0.0.1:3000`. Use the web credentials below.
-4. Follow [DEPLOYMENT.md](DEPLOYMENT.md) to run the persistent web data server
-   and deploy `apps/admin-web` on Vercel. Set `POS_WEB_SERVER_URL` to the HTTPS
-   origin of that web data server, not the Express sync API.
+4. Follow [DEPLOYMENT.md](DEPLOYMENT.md) to run the persistent backend
+   and configure the Vercel services. Vercel injects `BACKEND_URL` into
+   `admin-web`; the web API now runs in Express. SQLite still needs migration
+   to hosted storage before Vercel production use.
 5. For the Electron terminal, run `corepack pnpm dev:backend`, then in another
    PowerShell window set `$env:POS_API_URL='http://127.0.0.1:4000'` and run
    `corepack pnpm dev:desktop`. Use the backend credentials below.
@@ -37,7 +39,7 @@ with each other.
 
 **Web:** development automatically seeds the demo superuser on first startup.
 For a private production-mode demonstration, set `POS_WEB_DEMO=1` on the
-persistent web data server. Sign in as `superuser`, use **Change Password**,
+persistent backend. Sign in as `superuser`, use **Change Password**,
 then **Manage Admins** to create your administrator. Restarting does not reset
 the password. Without demo mode the current web prototype has no production
 account provisioning flow; deploying the frontend does not add one.
@@ -50,14 +52,14 @@ or given another bootstrap user. Keep `POS_DATA_DIR` on persistent storage and
 back it up; do not delete it to recover a login. This backend accepts one paired
 terminal per business.
 
-The Vercel frontend forwards browser sessions to the persistent web data server.
+The Vercel frontend forwards browser sessions to Express through its service binding.
 SQLite databases, encryption keys, local environment files, recordings and the
 unfinished `.deployment` copy are not part of this test-repository publication.
 
 ## Workspace
 
 See [Vercel monorepo deployment](DEPLOYMENT.md) to deploy the Next.js frontend
-on Vercel with a persistent Node data server.
+on Vercel using the backend service binding.
 
 | Path | Responsibility |
 | --- | --- |

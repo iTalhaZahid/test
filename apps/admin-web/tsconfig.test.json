@@ -6,5 +6,7 @@
     "rootDir": "../..",
     "outDir": ".test-dist"
   },
-  "include": ["src/server/store.test.ts"]
+  "include": [
+    "src/server/proxy.test.ts"
+  ]
 }

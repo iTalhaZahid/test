@@ -26,6 +26,18 @@ Sign in with the bootstrap administrator first to pair the terminal, then create
 
 For Docker, use the existing Compose commands; no administrator credentials are read from `.env`. The existing PostgreSQL service still uses the root `.env` for its database settings. The `backend-data` volume stores the API database. Back up that volume; container replacement alone must not remove it. The existing PostgreSQL service is retained for compatibility with the earlier scaffold but is not used by this sync implementation.
 
+## Browser web API
+
+The backend also owns `POST /api/pos` and `src/models/web-store.ts`. The Next.js
+frontend calls it through its `BACKEND_URL` service binding. Do not add a public
+rewrite for this endpoint: the browser uses Next.js for same-origin validation.
+Session cookies, permissions, validation, and the separate web database schema
+are retained. `POS_WEB_DATA_DIR` defaults to `POS_DATA_DIR/web`; point it at the
+old web data directory to preserve records and the encryption key. Web demo
+accounts require development mode or `POS_WEB_DEMO=1` for private demonstrations.
+This endpoint does not share accounts or financial records with `/api/v1`.
+See [deployment instructions](../../DEPLOYMENT.md).
+
 ## Endpoints
 
 All paths below are under `/api/v1`:
@@ -56,11 +68,11 @@ All paths below are under `/api/v1`:
 
 For the Vercel frontend and persistent-server monorepo setup, see
 [DEPLOYMENT.md](../../DEPLOYMENT.md). Keep this SQLite-backed sync API on a
-persistent Node host; the web frontend forwards to the separate web data server,
-not to these `/api/v1` endpoints.
+persistent Node host; the web frontend calls this backend through a service binding at `/api/pos`,
+separately from these `/api/v1` endpoints.
 
 Deploy one API instance with persistent SQLite storage behind HTTPS, and set `POS_API_URL` to its HTTPS origin before launching the desktop. HTTP is permitted only for localhost development; redirects are rejected. Only one paired POS terminal is accepted per backend/business, matching this project's original scope and preserving its sequential invoice numbers. Pairing tokens authorize that trusted terminal to upload its validated offline work, including work by other locally authorized staff.
 
-This is not a multi-tenant service or a multi-terminal invoice allocator. Do not put unrelated businesses in one database. Offline permission revocations cannot take effect until the terminal reconnects. The separate Next.js admin-web application's existing store remains independent; `/reports/events` exposes central uploaded records for its later integration. This change does not migrate that web store or deploy a public server.
+This is not a multi-tenant service or a multi-terminal invoice allocator. Do not put unrelated businesses in one database. Offline permission revocations cannot take effect until the terminal reconnects. The browser web store now runs in this backend but remains independent; `/reports/events` exposes central uploaded records for its later integration. This change does not migrate that web store or deploy a public server.
 
 Verification: `npm test --prefix apps/backend` runs HTTP authentication/validation checks and an end-to-end desktop-storage → offline → restart → reconnect integration test, including lost responses, duplicate prevention, cached login, monthly payments and conflicts.
