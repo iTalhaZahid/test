@@ -66,3 +66,33 @@ test('automatic printing renders only a hidden receipt without a preview dialog 
   assert.ok(!html.includes('receipt-controls'));
  }finally{delete globalThis.document;}
 });
+
+test('Save & Print uses the browser dialog on web and the native printer on desktop',async()=>{
+ for(const target of ['web','desktop','failed-desktop']){
+  const previous={window:globalThis.window,document:globalThis.document,frame:globalThis.requestAnimationFrame};
+  const effects=[];
+  let browserCalls=0,nativeCalls=0;
+  globalThis.document={body:{},fonts:{ready:Promise.resolve()}};
+  globalThis.requestAnimationFrame=callback=>{globalThis.queueMicrotask(callback);return 1;};
+  globalThis.window={print:()=>{browserCalls++;}};
+  if(target!=='web')globalThis.window.posPrinter={printReceipt:async()=>{nativeCalls++;if(target==='failed-desktop')throw new Error('Printer unavailable.');}};
+  try{
+   const hooks={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:effect=>effects.push(effect)};
+   const instance={exports:{}};
+   new Function('require','module','exports',compiled)(name=>name==='react'?hooks:name==='./sales-invoice'?invoices:name==='react-dom'?{createPortal:children=>children}:require(name),instance,instance.exports);
+   let completed;
+   const done=new Promise(resolve=>{completed=resolve;});
+   instance.exports.SalesReceipt({sale,autoPrint:true,onClose:()=>{},onPrinted:completed});
+   effects.forEach(effect=>effect());
+   const error=await done;
+   assert.equal(browserCalls,target==='web'?1:0);
+   assert.equal(nativeCalls,target==='web'?0:1);
+   if(target==='failed-desktop')assert.match(error,/Order is saved.*Printer unavailable/);
+   else assert.equal(error,undefined);
+  }finally{
+   if(previous.window===undefined)delete globalThis.window;else globalThis.window=previous.window;
+   if(previous.document===undefined)delete globalThis.document;else globalThis.document=previous.document;
+   if(previous.frame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=previous.frame;
+  }
+ }
+});

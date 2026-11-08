@@ -34,7 +34,6 @@ export function SalesReceipt({sale,onClose,autoPrint=false,onPrinted}:{sale:Sale
       await document.fonts.ready;
       await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
       if(window.posPrinter){await window.posPrinter.printReceipt();setStatus('Receipt sent to printer.');}
-      else if(autoPrint)throw new Error('Automatic printing requires the desktop POS app. Use Print last receipt to print from your browser.');
       else window.print();
       if(autoPrint)onPrinted?.();
     } catch(error){const message=`Order is saved. ${error instanceof Error?error.message:'Printing failed.'} Retry Print last receipt.`;setStatus(message);if(autoPrint)onPrinted?.(message);}
