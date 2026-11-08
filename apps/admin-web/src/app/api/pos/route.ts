@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,12 @@ export async function POST(request: NextRequest) {
       const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       for (const cookie of response.headers.getSetCookie()) {
         headers.append('Set-Cookie', request.nextUrl.protocol === 'https:' && !/;\s*secure(?:;|$)/i.test(cookie) ? `${cookie}; Secure` : cookie);
+      }
+      const catalog = input.operation === 'sales:menu' && !input.args[0] || input.operation === 'sales:payment-methods' || input.operation === 'management:list' && ['floor', 'expense-category'].includes(input.args[0]) && !input.args[1];
+      if (response.ok && catalog && request.headers.has('x-pos-catalog-version')) {
+        const result = await response.json();
+        const version = createHash('sha256').update(JSON.stringify(result.data)).digest('hex');
+        return new Response(JSON.stringify(version === request.headers.get('x-pos-catalog-version') ? { unchanged: true } : result), { status: response.status, headers });
       }
       return new Response(response.body, { status: response.status, headers });
     } catch {

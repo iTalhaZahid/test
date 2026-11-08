@@ -1,20 +1,25 @@
 import type { DesktopAuth } from '../../desktop/src/main/auth-contract';
 import type { DesktopManagement } from '../../desktop/src/main/management-contract';
 import type { DesktopSales } from '../../desktop/src/main/sales-contract';
+import { endCatalogSession, peekCatalog } from '../../desktop/src/renderer/catalog-cache';
 
 declare global {
   interface Window { posAuth: DesktopAuth; posManagement: DesktopManagement; posSales: DesktopSales }
 }
 
 async function call<T>(operation: string, ...args: unknown[]): Promise<T> {
+  const key = operation === 'sales:menu' && !args[0] ? 'menu' : operation === 'sales:payment-methods' ? 'payments' : operation === 'management:list' && !args[1] ? args[0] === 'floor' ? 'floors' : args[0] === 'expense-category' ? 'expenseCategories' : undefined : undefined;
+  const cached = key ? peekCatalog(key) : undefined;
+  const version = cached && crypto.subtle ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(cached)))), byte => byte.toString(16).padStart(2, '0')).join('') : '';
   const response = await fetch('/api/pos', {
     method: 'POST', credentials: 'same-origin', cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(version ? { 'X-POS-Catalog-Version': version } : {}) },
     body: JSON.stringify({ operation, args }),
   });
   const result = await response.json();
+  if(response.status===401)endCatalogSession();
   if (!response.ok) throw new Error(result.error || 'POS is unavailable. Please try again.');
-  return result.data as T;
+  return (result.unchanged && cached ? cached : result.data) as T;
 }
 
 export function installWebBridge() {

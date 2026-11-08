@@ -6,6 +6,8 @@ import { LoginVisual } from './LoginVisual';
 import { AdminHome } from './AdminHome';
 import { CashierHome } from './CashierHome';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LoadingSkeleton } from './LoadingSkeleton';
+import { activateCatalogSession, endCatalogSession, warmCatalog } from './catalog-cache';
 
 export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | 'web' }) {
   const [state, setState] = useState<AuthState | null>(null);
@@ -15,6 +17,7 @@ export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | '
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmLogout, setConfirmLogout] = useState(false);
+  useEffect(()=>{if(!state)return;if(state.user){activateCatalogSession(state.user.id);void warmCatalog();}else endCatalogSession();},[state]);
 
   useEffect(() => {
     let active = true;
@@ -32,6 +35,7 @@ export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | '
     }
     setBusy(true);
     setError('');
+    endCatalogSession();
     try {
       const result = await window.posAuth.login(username, password);
       if (result.ok) {
@@ -49,6 +53,7 @@ export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | '
   }
 
   async function logout() {
+    endCatalogSession();
     setConfirmLogout(false);
     setBusy(true);
     setError('');
@@ -63,6 +68,7 @@ export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | '
     }
   }
 
+  if(!state&&!error)return <main className="grid min-h-dvh bg-white md:grid-cols-2"><LoginVisual/><section className="flex items-center px-8 py-12 lg:px-16"><LoadingSkeleton label="Loading sign-in" variant="page"/></section></main>;
   if (state?.user) return <>
     {state.user.role !== 'cashier' ? <AdminHome user={state.user} onLogout={async () => setConfirmLogout(true)} busy={busy} error={error} /> : <CashierHome user={state.user} onLogout={async () => setConfirmLogout(true)} error={error} />}
     {confirmLogout && <ConfirmDialog title="Sign out?" message="End this session and return to the login screen?" onCancel={() => setConfirmLogout(false)} onConfirm={() => void logout()} />}
@@ -101,7 +107,7 @@ export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | '
               </button>
             </div>
             <button type="submit" disabled={busy || !state} className="primary-button mt-7">
-              {busy ? 'Signing in…' : !state ? 'Opening terminal…' : 'Sign in'}<ArrowRight size={18} aria-hidden="true" />
+              {busy ? 'Signing in…' : !state ? 'Sign-in unavailable' : 'Sign in'}<ArrowRight size={18} aria-hidden="true" />
             </button>
           </form>
           {state && (!state.demo || window.posSync) && <p className="mt-6 text-sm leading-6 text-slate-600">Connect to the POS server for your first sign-in. Previously verified users can sign in offline on this device.</p>}

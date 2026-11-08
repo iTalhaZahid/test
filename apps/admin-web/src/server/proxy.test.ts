@@ -1,7 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { POST } from '../app/api/pos/route';
+
+test('catalog checks reuse unchanged data and return edits only after authenticated upstream success', async () => {
+  const originalFetch = globalThis.fetch, originalUrl = process.env.BACKEND_URL;
+  const data = [{ id: 'floor', name: 'Ground', tables: [1, 2] }];
+  const version = createHash('sha256').update(JSON.stringify(data)).digest('hex');
+  const request = () => new NextRequest('https://pos.example.com/api/pos', {
+    method: 'POST', headers: { origin: 'https://pos.example.com', 'content-type': 'application/json', 'x-pos-catalog-version': version },
+    body: JSON.stringify({ operation: 'management:list', args: ['floor', ''] }),
+  });
+  try {
+    process.env.BACKEND_URL = 'https://data.example.com';
+    globalThis.fetch = async () => Response.json({ data });
+    assert.deepEqual(await (await POST(request())).json(), { unchanged: true });
+    const updated = [{ ...data[0], tables: [1, 2, 3] }];
+    globalThis.fetch = async () => Response.json({ data: updated });
+    assert.deepEqual(await (await POST(request())).json(), { data: updated });
+    globalThis.fetch = async () => Response.json({ error: 'Sign in to continue.' }, { status: 401 });
+    assert.equal((await POST(request())).status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.BACKEND_URL;
+    else process.env.BACKEND_URL = originalUrl;
+  }
+});
 
 test('Vercel uses the backend binding and fails closed without it', async () => {
   const originalFetch = globalThis.fetch;
