@@ -8,6 +8,7 @@ mkdirSync(directory,{recursive:true});
 const model=new PosModel(path.join(directory,'online.sqlite'));
 await model.bootstrap();
 const app=createApp(model);
+export default app;
 
 const port = Number(process.env.PORT ?? 4000);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {

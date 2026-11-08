@@ -4,6 +4,12 @@ Restaurant POS with local SQLite checkout, receipts, management, encrypted cache
 
 ## Next steps for this test repository
 
+The root `vercel.json` now declares the `admin-web` and `backend` services.
+See [the multi-service setup and storage blocker](DEPLOYMENT.md#vercel-multi-service-project)
+before importing the repository root into Vercel. Express still needs a hosted
+database migration for Vercel; the persistent-server deployment below remains
+the working option for SQLite.
+
 1. Clone this repository and install Node 24 and pnpm 10.34.9.
 2. Run `corepack pnpm install --frozen-lockfile` from the repository root.
 3. For a local browser test, run `corepack pnpm dev:admin` and open
