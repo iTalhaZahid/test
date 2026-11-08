@@ -27,7 +27,9 @@ export function upload(value: unknown): Upload {
   if (entity !== 'recurring' && payload.id !== key) throw new ApiError(400, 'Sync ID mismatch.');
   if (entity === 'record') {
     if (!['cashier','creditor','menu','shop','admin','payment','recurring','employee','employee-category','expense-category','floor'].includes(text(payload.kind))) throw new ApiError(400, 'Invalid record kind.');
-    text(payload.name); integer(payload.pricePaisa); integer(payload.quantity); integer(payload.archived, 0, 1);
+    text(payload.name); integer(payload.pricePaisa);
+    const half=integer(payload.half_price??0);
+    if(half>Number(payload.pricePaisa)||(half>0&&payload.kind!=='menu'))throw new ApiError(400,'Invalid portion prices.'); integer(payload.quantity); integer(payload.archived, 0, 1);
     for (const field of ['phone','passport','identity','username','shop_id','employee_id','employee_category','employee','expense_type','start_month','payment_category']) {
       if (typeof payload[field] !== 'string' || String(payload[field]).length > 160) throw new ApiError(400, 'Invalid record field.');
     }
@@ -49,6 +51,7 @@ export function upload(value: unknown): Upload {
     if (!Array.isArray(payload.lines) || !payload.lines.length || payload.lines.length > 200) throw new ApiError(400, 'Invalid sale lines.');
     const subtotal = payload.lines.reduce((sum: number, value: unknown) => {
       const line = object(value); text(line.itemId,64); text(line.name);
+      if(line.portion!==undefined&&!['half','full'].includes(String(line.portion)))throw new ApiError(400,'Invalid meal portion.');
       const total = integer(line.quantity,1,9999) * integer(line.unitPrice,1,999999999);
       if (integer(line.total) !== total) throw new ApiError(400, 'Invalid line total.');
       return sum + total;

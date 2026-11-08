@@ -146,14 +146,17 @@ test('restaurant menu imports exact prices, archives dummy items and preserves l
     db.prepare("INSERT INTO development_records(id,kind,name,phone,passport,identity,pricePaisa,quantity) VALUES('sample-menu-1','menu','Chicken Burger','','','',45000,25)").run();
     store.installRestaurantMenu();store.installRestaurantMenu();
     const rows=store.list('admin','menu','');
-    assert.equal(rows.length,57);assert.equal(restaurantMenu.length,57);
-    for(const [name,price] of restaurantMenu){const row=rows.find(r=>r.name===name);assert.ok(row);assert.equal(row.pricePaisa,price);assert.equal(row.quantity,0);}
+    assert.equal(rows.length,51);assert.equal(restaurantMenu.length,51);
+    for(const [name,price,half=0] of restaurantMenu){const row=rows.find(r=>r.name===name);assert.ok(row);assert.equal(row.pricePaisa,price);assert.equal(row.halfPricePaisa,half);assert.equal(row.quantity,0);}
     assert.equal(db.prepare("SELECT archived FROM development_records WHERE id='sample-menu-1'").get()!.archived,1);
-    assert.equal(store.list('admin','menu','karahi').length,5);
-    store.save('admin',{...rows[0],pricePaisa:333,quantity:12});
-    store.remove('admin','menu',rows[1].id);store.installRestaurantMenu();
-    assert.equal(store.list('admin','menu','').find(r=>r.id===rows[0].id)!.pricePaisa,333);
-    assert.equal(store.list('admin','menu','').some(r=>r.id===rows[1].id),false);
+    assert.equal(store.list('admin','menu','karahi').length,2);
+    assert.ok(rows.filter(row=>row.image).length>=23);
+    const editable=rows.find(row=>!row.halfPricePaisa)!;
+    const removed=rows.find(row=>row.id!==editable.id)!;
+    store.save('admin',{...editable,pricePaisa:333,quantity:12});
+    store.remove('admin','menu',removed.id);store.installRestaurantMenu();
+    assert.equal(store.list('admin','menu','').find(r=>r.id===editable.id)!.pricePaisa,333);
+    assert.equal(store.list('admin','menu','').some(r=>r.id===removed.id),false);
   }finally{db.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });
 

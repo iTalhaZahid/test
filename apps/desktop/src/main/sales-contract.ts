@@ -8,7 +8,16 @@ export function discountAmount(subtotal:number,discount?:SaleDiscount):number {
   return amount;
 }
 export type CustomerType = 'walk-in' | 'creditor' | 'delivery';
-export interface MenuItem { id: string; name: string; priceMinor: number; favourite: boolean; image?: string }
+export type MealPortion = 'half' | 'full';
+export interface MenuItem { id: string; name: string; priceMinor: number; halfPriceMinor?: number; favourite: boolean; image?: string }
+export function menuPortionPrice(full: number, half: number | undefined, portion: MealPortion | undefined) {
+  if (half) {
+    if (portion !== 'half' && portion !== 'full') throw new Error('Choose Half or Full for this meal.');
+    return portion === 'half' ? half : full;
+  }
+  if (portion !== undefined) throw new Error('This item does not have portion options.');
+  return full;
+}
 export interface PaymentMethod { id: string; name: string; category: 'cash' | 'card' | 'online' }
 export interface Creditor { id: string; name: string; phone: string }
 export interface SaleRequest {
@@ -16,7 +25,7 @@ export interface SaleRequest {
   discount?: SaleDiscount;
   paymentMethodId?: string;
   table?: {floorId:string; number:number};
-  lines: { itemId: string; quantity: number; unitPrice: number }[]; receivedMinor: number;
+  lines: { itemId: string; quantity: number; unitPrice: number; portion?: MealPortion }[]; receivedMinor: number;
 }
 export interface Sale {
   invoiceNumber?: number;
@@ -26,7 +35,7 @@ export interface Sale {
   shopId?: string; shopName?: string;
   id: string; date: string; businessDate: string; currency: 'QAR'; cashierId: string; cashierName: string;
   customerType: CustomerType; creditor: Creditor | null;
-  lines: { itemId: string; name: string; quantity: number; unitPrice: number; total: number }[];
+  lines: { itemId: string; name: string; quantity: number; unitPrice: number; total: number; portion?: MealPortion }[];
   total: number; received: number; cashApplied: number; change: number; credit: number;
 }
 export interface SaleFilter { start: string; end: string; type: 'all' | 'cash' | 'creditor'; shopId?: string }

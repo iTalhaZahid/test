@@ -57,6 +57,22 @@ For the terminal, set `POS_API_URL` to the backend's public HTTPS origin (or
 pairs the terminal; subsequent cached logins and normal checkout can work offline.
 Only one paired terminal is supported per backend/business.
 
+## Restaurant menu and portions
+
+The supplied posters replace the original demo catalog with 51 dishes and cropped
+photos where available. Aloo Gosht is Half QAR 6 / Full QAR 10; Special Aloo Gosht
+is a separate QAR 10 item. Chicken Malai Boti, Sheri Fish Fry and Peshawar Tawa
+Kaliji use temporary QAR 10 prices; edit these in Manage Menu.
+
+In Manage Menu, enable **Portioned meal (Half / Full)** and enter both prices.
+Selecting that dish during checkout opens two serving buttons. The invoice and
+receipt identify the selected portion, and the server validates its price.
+
+Run `corepack pnpm --filter @pos/backend db:migrate` before deploying this update.
+The versioned catalog import runs once, archives the previous seeded dishes and
+preserves historical sales and custom dishes. Later restarts preserve menu edits.
+The desktop applies its local schema and catalog update automatically.
+
 ## Checks
 
 ```sh

@@ -1,4 +1,4 @@
-import { discountAmount } from './sales-contract';
+import { discountAmount, menuPortionPrice } from './sales-contract';
 import type { MonthlyExpense } from './management-contract';
 import { DatabaseSync } from 'node:sqlite';
 import type { LocalUser } from './auth-contract';
@@ -84,12 +84,12 @@ export class SalesStore {
     if (search && !tokens) return [];
     const shopId = actor.role === 'cashier' ? this.cashierShop(actor).shopId : '';
     const match = tokens?.map(token => `"${token}"*`).join(' AND ');
-    const rows = this.db.prepare(`SELECT r.id,r.name,r.image,r.pricePaisa AS priceMinor,
+    const rows = this.db.prepare(`SELECT r.id,r.name,r.image,r.pricePaisa AS priceMinor,r.half_price AS halfPriceMinor,
       EXISTS(SELECT 1 FROM menu_favourites f WHERE f.item_id=r.id AND f.cashier_id=?) AS favourite
       FROM development_records r ${search ? 'JOIN development_menu_fts fts ON fts.rowid=r.rowid' : ''}
       WHERE r.kind='menu' AND r.archived=0 AND (?='' OR r.shop_id=? OR r.shop_id='__all__') ${search ? 'AND development_menu_fts MATCH ?' : ''} ORDER BY r.name COLLATE NOCASE`)
       .all(...(search ? [actor.id, shopId, shopId, match!] : [actor.id, shopId, shopId]));
-    return rows.map(row => ({ id: String(row.id), name: String(row.name), priceMinor: Number(row.priceMinor), favourite: !!row.favourite, image: String(row.image) }));
+    return rows.map(row => ({ id: String(row.id), name: String(row.name), priceMinor: Number(row.priceMinor), halfPriceMinor: Number(row.halfPriceMinor)||undefined, favourite: !!row.favourite, image: String(row.image) }));
   }
   favourite(user: LocalUser | null, itemId: unknown, enabled: unknown) {
     const actor = this.authorize(user), id = string(itemId,64);
@@ -158,13 +158,14 @@ export class SalesStore {
         const lines = request.lines.map(line => {
           if (!line || typeof line !== 'object') throw new Error('Invalid item.');
           const itemId = string(line.itemId,64), quantity = integer(line.quantity,1,9999);
-          if (seen.has(itemId)) throw new Error('Duplicate item.');
-          seen.add(itemId);
-          const item = this.db.prepare("SELECT name,pricePaisa FROM development_records WHERE id=? AND kind='menu' AND archived=0 AND (shop_id=? OR shop_id='__all__')").get(itemId,shop.shopId);
+          const lineKey = `${itemId}:${line.portion || 'regular'}`;
+          if (seen.has(lineKey)) throw new Error('Duplicate item.');
+          seen.add(lineKey);
+          const item = this.db.prepare("SELECT name,pricePaisa,half_price FROM development_records WHERE id=? AND kind='menu' AND archived=0 AND (shop_id=? OR shop_id='__all__')").get(itemId,shop.shopId);
           if (!item) throw new Error('An item is no longer available. Remove it and try again.');
-          const unitPrice = integer(Number(item.pricePaisa),1,999999999);
+          const unitPrice = integer(menuPortionPrice(Number(item.pricePaisa),Number(item.half_price),line.portion),1,999999999);
           if (line.unitPrice !== unitPrice) throw new Error('A price changed. Remove and re-add the item before saving.');
-          return { itemId, name:String(item.name), quantity, unitPrice, total:unitPrice*quantity };
+          return { itemId, name:String(item.name)+(line.portion?` (${line.portion==='half'?'Half':'Full'})`:''), ...(line.portion?{portion:line.portion}:{}), quantity, unitPrice, total:unitPrice*quantity };
         });
         const subtotal = integer(lines.reduce((sum,line) => sum+line.total,0),1,99999999999);
         const discountMinor=discountAmount(subtotal,request.discount),total=subtotal-discountMinor;

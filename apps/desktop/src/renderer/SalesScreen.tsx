@@ -1,15 +1,16 @@
 import { salesInvoiceNumber } from './sales-invoice';
 import { SavedDialog } from './SavedDialog';
 import { receivedAmountError } from './received-amount';
+import { PortionDialog } from './PortionDialog';
 import { SalesReceipt } from './SalesReceipt';
-import { discountAmount, type SaleDiscount } from '../main/sales-contract';
+import { discountAmount, menuPortionPrice, type MealPortion, type SaleDiscount } from '../main/sales-contract';
 import type { ManagementRecord } from '../main/management-contract';
 import { useEffect, useRef, useState } from 'react';
 import { Search, Star, Minus, Plus, ShoppingBasket, X } from 'lucide-react';
 import type { Sale, Creditor, CustomerType, MenuItem, PaymentMethod, SaleRequest } from '../main/sales-contract';
 
 export const money = (minor: number) => `QAR ${(minor / 100).toFixed(2)}`;
-type CartLine = MenuItem & { quantity: number };
+type CartLine = MenuItem & { quantity: number; cartKey: string; portion?: MealPortion };
 
 export function SalesScreen({ cashierId, manageFinance = false }: { cashierId: string; manageFinance?: boolean }) {
   const [floors,setFloors]=useState<ManagementRecord[]>([]),[floorId,setFloorId]=useState(''),[tableNumber,setTableNumber]=useState('');
@@ -21,6 +22,8 @@ export function SalesScreen({ cashierId, manageFinance = false }: { cashierId: s
   const [items,setItems] = useState<MenuItem[]>([]);
   const [search,setSearch] = useState('');
   const [cart,setCart] = useState<CartLine[]>([]);
+  const [portionItem,setPortionItem] = useState<MenuItem|null>(null);
+  const portionTrigger = useRef<HTMLButtonElement|null>(null);
   const [type,setType] = useState<CustomerType>('walk-in');
   const [creditor,setCreditor] = useState<Creditor | null>(null);
   const [appliedDiscount,setAppliedDiscount]=useState<SaleDiscount>();
@@ -88,11 +91,20 @@ export function SalesScreen({ cashierId, manageFinance = false }: { cashierId: s
   const amountError=receivedAmountError(received,amount,total,type,methods.find(method=>method.id===paymentMethodId)?.category);
   const showAmountError=amountAttempted&&!pending&&!!amountError;
   const locked = busy || autoPrint || !!pending || draftUnreadable;
-  function add(item: MenuItem) {
+  function add(item: MenuItem, portion?: MealPortion) {
     if (locked) return;
-    setCart(rows => rows.some(row => row.id===item.id) ? rows.map(row => row.id===item.id ? {...row,quantity:Math.min(9999,row.quantity+1)} : row) : [...rows,{...item,quantity:1}]);
+    const cartKey = `${item.id}:${portion||'regular'}`;
+    const priceMinor = menuPortionPrice(item.priceMinor,item.halfPriceMinor,portion);
+    setCart(rows => rows.some(row=>row.cartKey===cartKey) ? rows.map(row=>row.cartKey===cartKey?{...row,quantity:Math.min(9999,row.quantity+1)}:row) :
+      [...rows,{...item,cartKey,portion,priceMinor,name:item.name+(portion?` (${portion==='half'?'Half':'Full'})`:''),quantity:1}]);
   }
-  function quantity(id: string, delta: number) { setCart(rows => rows.map(row => row.id===id ? {...row,quantity:Math.min(9999,row.quantity+delta)} : row).filter(row => row.quantity>0)); }
+  function selectItem(item: MenuItem, trigger: HTMLButtonElement) {
+    if (locked) return;
+    if (item.halfPriceMinor) { portionTrigger.current=trigger; setPortionItem(item); }
+    else add(item);
+  }
+  function closePortion() { setPortionItem(null); portionTrigger.current?.focus(); }
+  function quantity(key: string, delta: number) { setCart(rows => rows.map(row => row.cartKey===key ? {...row,quantity:Math.min(9999,row.quantity+delta)} : row).filter(row => row.quantity>0)); }
   async function favourite(item: MenuItem) {
     try { await window.posSales.favourite(item.id,!item.favourite); setRefresh(v => v+1); }
     catch { setMessage('Unable to change favourite.'); }
@@ -103,7 +115,7 @@ export function SalesScreen({ cashierId, manageFinance = false }: { cashierId: s
     if(discountError){setMessage(discountError);return;}
     if (!pending && (!cart.length || !paymentMethodId || !validAmount || (type==='creditor' && !creditor))) { setMessage('Add items, enter a valid amount, and select a creditor when required.'); return; }
     if(!pending&&floorId&&!tableNumber){setMessage('Choose a table for the selected floor.');return;}
-    const request: SaleRequest = pending || { operationId:crypto.randomUUID(), customerType:type, creditorId:type==='creditor' ? creditor!.id : null, paymentMethodId, ...(discount?{discount}:{}), ...(floorId&&tableNumber?{table:{floorId,number:Number(tableNumber)}}:{}), receivedMinor:amount, lines:cart.map(row => ({itemId:row.id,quantity:row.quantity,unitPrice:row.priceMinor})) };
+    const request: SaleRequest = pending || { operationId:crypto.randomUUID(), customerType:type, creditorId:type==='creditor' ? creditor!.id : null, paymentMethodId, ...(discount?{discount}:{}), ...(floorId&&tableNumber?{table:{floorId,number:Number(tableNumber)}}:{}), receivedMinor:amount, lines:cart.map(row => ({itemId:row.id,quantity:row.quantity,unitPrice:row.priceMinor,...(row.portion?{portion:row.portion}:{})})) };
     setBusy(true); setMessage('');
     try {
       // Keep the original ID across a lost response or app restart; never generate a second save attempt.
@@ -121,21 +133,22 @@ export function SalesScreen({ cashierId, manageFinance = false }: { cashierId: s
     finally { setBusy(false); }
   }
   function pills(rows: MenuItem[]) {
-    return <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">{rows.map(item => <div key={item.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <button disabled={locked} onClick={() => add(item)} className="block h-full w-full text-left hover:bg-blue-50 disabled:opacity-50">
-        {item.image ? <img src={item.image} alt="" loading="lazy" className="h-32 w-full object-cover"/> : <span className="grid h-32 place-items-center bg-blue-50 text-blue-500"><ShoppingBasket size={32} aria-hidden="true"/></span>}
-        <span className="block p-3"><span className="block break-words font-medium">{item.name}</span><span className="mt-2 block text-sm text-slate-600">{money(item.priceMinor)}</span></span>
-      </button><button onClick={() => void favourite(item)} aria-label={`${item.favourite ? 'Remove' : 'Add'} ${item.name} ${item.favourite ? 'from' : 'to'} favourites`} aria-pressed={item.favourite} className="absolute right-1 top-1 rounded-full bg-white p-3 text-amber-700"><Star size={18} fill={item.favourite ? 'currentColor' : 'none'} /></button>
+    return <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-3">{rows.map(item => <div key={item.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button disabled={locked} onClick={event=>selectItem(item,event.currentTarget)} className="flex min-h-24 w-full items-center gap-3 p-3 pr-11 text-left hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-700 disabled:opacity-50">
+        {item.image ? <img src={item.image} alt="" loading="lazy" className="h-16 w-20 shrink-0 rounded-lg object-cover"/> : <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-500"><ShoppingBasket size={24} aria-hidden="true"/></span>}
+        <span className="min-w-0"><span className="block break-words text-sm font-semibold">{item.name}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{item.halfPriceMinor?`Half ${money(item.halfPriceMinor)} / Full ${money(item.priceMinor)}`:money(item.priceMinor)}</span></span>
+      </button><button onClick={() => void favourite(item)} aria-label={`${item.favourite ? 'Remove' : 'Add'} ${item.name} ${item.favourite ? 'from' : 'to'} favourites`} aria-pressed={item.favourite} className="absolute right-0 top-0 flex size-11 items-center justify-center rounded-full text-amber-700 hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-blue-700"><Star size={18} fill={item.favourite ? 'currentColor' : 'none'} /></button>
     </div>)}</div>;
   }
-  return <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(400px,1fr)]">
+  return <div className="grid min-h-0 flex-1 items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(400px,1fr)]">
+    {portionItem&&<PortionDialog item={portionItem} onClose={closePortion} onSelect={portion=>{add(portionItem,portion);closePortion();}}/>}
     {receiptOpen&&lastSale&&<SalesReceipt autoPrint={autoPrint} sale={lastSale} onClose={()=>setReceiptOpen(false)} onPrinted={error=>{setReceiptOpen(false);setAutoPrint(false);if(error)setMessage(error);else setPrinted(true);}}/>}
     {printed&&<SavedDialog title="Order Saved" message={`Invoice ${salesInvoiceNumber(lastSale!)} saved and sent to printer.`} onClose={()=>setPrinted(false)}/>}
     <section aria-label="Menu items" className="min-w-0 lg:max-h-[calc(100dvh-210px)] lg:overflow-y-auto">
       <label className="relative mb-5 block"><span className="sr-only">Search menu items</span><Search className="pointer-events-none absolute top-3.5 left-3 text-slate-400" size={18} aria-hidden="true" /><input className="login-input" type="search" maxLength={120} placeholder="Search menu items…" value={search} onChange={e => setSearch(e.target.value)} /></label>
       {loading ? <p role="status">Loading menu…</p> : <><h2 className="mb-3 flex items-center gap-2 font-semibold"><Star size={18} className="text-amber-600" />Favourites</h2>{items.some(item=>item.favourite) ? pills(items.filter(item=>item.favourite)) : <p className="mb-4 text-sm text-slate-500">Use the star to pin your favourite items here.</p>}<h2 className="mt-6 mb-3 font-semibold">Other items</h2>{pills(items.filter(item=>!item.favourite))}{!items.length && <p className="text-sm text-slate-500">No matching menu items.</p>}</>}
     </section>
-    <section aria-label="Sales invoice" className="management-panel flex min-h-[calc(100dvh-160px)] lg:sticky lg:top-4 lg:h-[calc(100dvh-32px)] overflow-y-auto min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5">
+    <section aria-label="Sales invoice" className="management-panel flex lg:sticky lg:top-4 min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5">
       <div className="shrink-0">
       <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold"><ShoppingBasket size={22} />Sales Invoice</h2>
       <div className="grid grid-cols-2 gap-3">
@@ -147,8 +160,8 @@ export function SalesScreen({ cashierId, manageFinance = false }: { cashierId: s
       {creditor && <button disabled={locked} onClick={() => {setCreditorSearch('');setPicker(true);}} className="my-3 text-sm text-blue-700">Creditor: {creditor.name} · Change</button>}
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)_65px_98px_75px] gap-2 border-b pb-2 text-xs text-slate-500"><span>Item name</span><span>Unit price</span><span className="text-center">Quantity</span><span className="text-right">Total</span></div>
       </div>
-      <div role="region" aria-label="Invoice items" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-      {cart.map(line => <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_65px_98px_75px] items-center gap-2 border-b border-slate-100 py-4 text-sm"><span className="break-words font-medium">{line.name}</span><span>{(line.priceMinor/100).toFixed(2)}</span><div className="flex items-center justify-between rounded-lg border border-slate-200"><button disabled={locked} aria-label={`Decrease ${line.name}`} onClick={()=>quantity(line.id,-1)} className="p-1.5"><Minus size={14}/></button><span>{line.quantity}</span><button disabled={locked || line.quantity>=9999} aria-label={`Increase ${line.name}`} onClick={()=>quantity(line.id,1)} className="p-1.5"><Plus size={14}/></button></div><span className="break-all text-right">{(line.priceMinor*line.quantity/100).toFixed(2)}</span></div>)}
+      <div role="region" aria-label="Invoice items" tabIndex={0} className="max-h-[38dvh] min-h-0 overflow-y-auto overscroll-auto">
+      {cart.map(line => <div key={line.cartKey} className="grid grid-cols-[minmax(0,1fr)_65px_98px_75px] items-center gap-2 border-b border-slate-100 py-4 text-sm"><span className="break-words font-medium">{line.name}</span><span>{(line.priceMinor/100).toFixed(2)}</span><div className="flex items-center justify-between rounded-lg border border-slate-200"><button disabled={locked} aria-label={`Decrease ${line.name}`} onClick={()=>quantity(line.cartKey,-1)} className="p-1.5"><Minus size={14}/></button><span>{line.quantity}</span><button disabled={locked || line.quantity>=9999} aria-label={`Increase ${line.name}`} onClick={()=>quantity(line.cartKey,1)} className="p-1.5"><Plus size={14}/></button></div><span className="break-all text-right">{(line.priceMinor*line.quantity/100).toFixed(2)}</span></div>)}
       {!cart.length && <p className="py-8 text-center text-sm text-slate-500">{pending ? 'Previous save awaiting confirmation.' : 'Select menu items to start your order.'}</p>}
       </div>
       <div className="shrink-0 border-t border-slate-200">

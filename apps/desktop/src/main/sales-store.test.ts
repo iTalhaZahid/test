@@ -10,6 +10,31 @@ import { ManagementStore } from './management-store';
 import { SalesStore } from './sales-store';
 import type { SaleRequest } from './sales-contract';
 
+test('portion choices price Half and Full independently and reject missing or tampered prices',()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'pos-portions-')),file=path.join(directory,'pos.sqlite');
+  const management=new ManagementStore(file,true),sales=new SalesStore(file,path.join(directory,'recovery.sqlite'),value=>Buffer.from(value));
+  const admin={id:'admin',username:'admin',displayName:'Admin',role:'admin' as const};
+  try{
+    const base={id:'',kind:'cashier' as const,name:'Portion cashier',phone:'03001234567',passport:'',identity:'',pricePaisa:0,quantity:0,shopId:'main-shop'};
+    management.save(admin,base);
+    const cashier={...admin,id:management.list(admin,'cashier','')[0].id,role:'cashier' as const};
+    management.save(admin,{...base,kind:'menu',name:'Mutton BBQ',pricePaisa:1000,halfPricePaisa:800});
+    const item=sales.menu(cashier,'Mutton BBQ')[0];
+    assert.equal(item.halfPriceMinor,800);
+    assert.throws(()=>management.save(admin,{...base,kind:'menu',name:'Bad portion',pricePaisa:1000,halfPricePaisa:1100}),/Half price/);
+    const order:SaleRequest={operationId:randomUUID(),customerType:'walk-in',creditorId:null,receivedMinor:1800,lines:[{itemId:item.id,quantity:1,unitPrice:800,portion:'half'},{itemId:item.id,quantity:1,unitPrice:1000,portion:'full'}]};
+    const result=sales.save(cashier,order);
+    assert.ok(result.ok);
+    assert.equal(result.sale.total,1800);
+    assert.deepEqual(result.sale.lines.map(line=>line.name),['Mutton BBQ (Half)','Mutton BBQ (Full)']);
+    assert.deepEqual(sales.save(cashier,order),JSON.parse(JSON.stringify(result)));
+    const missing=sales.save(cashier,{...order,operationId:randomUUID(),lines:[{itemId:item.id,quantity:1,unitPrice:1000}]});
+    assert.ok(!missing.ok);assert.match(missing.message,/Choose Half or Full/);
+    const tampered=sales.save(cashier,{...order,operationId:randomUUID(),lines:[{itemId:item.id,quantity:1,unitPrice:1000,portion:'half'}]});
+    assert.ok(!tampered.ok);assert.match(tampered.message,/price changed/);
+  }finally{sales.close();management.close();rmSync(directory,{recursive:true,force:true});}
+});
+
 test('expense and recovery shop filters preserve attribution, permissions and retry safety',()=>{
   const dir=mkdtempSync(path.join(tmpdir(),'pos-shop-ledgers-')),file=path.join(dir,'pos.sqlite');
   const management=new ManagementStore(file,true),sales=new SalesStore(file,path.join(dir,'recovery.sqlite'),value=>Buffer.from(value));

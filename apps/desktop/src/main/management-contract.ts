@@ -1,5 +1,13 @@
 export type RecordKind = 'cashier' | 'employee' | 'employee-category' | 'expense-category' | 'creditor' | 'menu' | 'shop' | 'admin' | 'payment' | 'recurring' | 'floor';
 
+export function menuHalfPrice(full: number, value: unknown) {
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > full) {
+    throw new Error('Half price must be a non-negative amount no greater than the full price.');
+  }
+  return value;
+}
+
 export function managementErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') : '';
   if (/UNIQUE constraint failed: local_users.username/i.test(message)) return 'This username is already in use. Choose another username.';
@@ -10,6 +18,7 @@ export interface ManagementRecord {
   id: string; kind: RecordKind; name: string; phone: string; passport: string; identity: string;
   // shortcut: legacy column name holds QAR dirhams; rename with the production currency migration.
   pricePaisa: number; quantity: number;
+  halfPricePaisa?: number;
   tables?: number[];
   username?: string; password?: string;
   shopId?: string;

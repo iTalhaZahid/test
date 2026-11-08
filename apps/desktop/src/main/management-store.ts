@@ -1,8 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { menuHalfPrice } from './management-contract';
 import type { LocalUser } from './auth-contract';
 import type { ManagementRecord, MonthlyExpense, RecordKind } from './management-contract';
-import { restaurantMenu } from './restaurant-menu';
+import { restaurantMenu, restaurantMenuVersion, restaurantMenuId, restaurantMenuImage } from './restaurant-menu';
 
 function kind(value: unknown): RecordKind {
   if (typeof value !== 'string' || !['cashier','creditor','menu','shop','admin','payment','recurring','employee','employee-category','expense-category','floor'].includes(value)) throw new Error('Invalid record type.');
@@ -37,7 +38,7 @@ export class ManagementStore {
       END;`);
     if (!this.db.prepare('PRAGMA table_info(development_records)').all().some(c => c.name === 'username')) this.db.exec("ALTER TABLE development_records ADD COLUMN username TEXT NOT NULL DEFAULT ''");
     if (!this.db.prepare('PRAGMA table_info(development_records)').all().some(c => c.name === 'shop_id')) this.db.exec("ALTER TABLE development_records ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'main-shop'");
-    for (const [column, definition] of Object.entries({floor_tables:"TEXT NOT NULL DEFAULT '[]'",manage_finance:'INTEGER NOT NULL DEFAULT 0', image:"TEXT NOT NULL DEFAULT ''", payment_category:"TEXT NOT NULL DEFAULT 'cash'", employee_id:"TEXT NOT NULL DEFAULT ''", employee_category:"TEXT NOT NULL DEFAULT ''", employee:"TEXT NOT NULL DEFAULT ''", expense_type:"TEXT NOT NULL DEFAULT ''", start_month:"TEXT NOT NULL DEFAULT ''"})) {
+    for (const [column, definition] of Object.entries({half_price:'INTEGER NOT NULL DEFAULT 0',floor_tables:"TEXT NOT NULL DEFAULT '[]'",manage_finance:'INTEGER NOT NULL DEFAULT 0', image:"TEXT NOT NULL DEFAULT ''", payment_category:"TEXT NOT NULL DEFAULT 'cash'", employee_id:"TEXT NOT NULL DEFAULT ''", employee_category:"TEXT NOT NULL DEFAULT ''", employee:"TEXT NOT NULL DEFAULT ''", expense_type:"TEXT NOT NULL DEFAULT ''", start_month:"TEXT NOT NULL DEFAULT ''"})) {
       if (!this.db.prepare('PRAGMA table_info(development_records)').all().some(c => c.name === column)) this.db.exec(`ALTER TABLE development_records ADD COLUMN ${column} ${definition}`);
     }
     this.db.exec(`CREATE TABLE IF NOT EXISTS recurring_payments(id TEXT NOT NULL, month TEXT NOT NULL, shop_id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(id,month)) STRICT;`);
@@ -90,19 +91,23 @@ export class ManagementStore {
   }
   installRestaurantMenu() {
     if (!this.enabled) return;
+    this.db.exec('CREATE TABLE IF NOT EXISTS catalog_versions(name TEXT PRIMARY KEY,version TEXT NOT NULL) STRICT');
+    if (this.db.prepare("SELECT version FROM catalog_versions WHERE name='restaurant-menu'").get()?.version === restaurantMenuVersion) return;
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db.prepare("UPDATE development_records SET archived=1 WHERE kind='menu' AND id IN ('sample-menu-1','sample-menu-2','sample-menu-3')").run();
-      const insert=this.db.prepare("INSERT OR IGNORE INTO development_records(id,kind,name,phone,passport,identity,pricePaisa,quantity) VALUES(?,'menu',?,'','','',?,0)");
-      for(const [name,price] of restaurantMenu) insert.run(`khayber-${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,name,price);
+      this.db.prepare("UPDATE development_records SET archived=1 WHERE kind='menu' AND (id LIKE 'khayber-%' OR id LIKE 'sample-menu-%')").run();
+      const insert=this.db.prepare(`INSERT INTO development_records(id,kind,name,phone,passport,identity,pricePaisa,quantity,half_price,image,shop_id)
+        VALUES(?,'menu',?,'','','',?,0,?,?,'main-shop') ON CONFLICT(id) DO UPDATE SET name=excluded.name,pricePaisa=excluded.pricePaisa,half_price=excluded.half_price,image=excluded.image,archived=0`);
+      for (const [name,price,half=0] of restaurantMenu) insert.run(restaurantMenuId(name),name,price,half,restaurantMenuImage(name));
+      this.db.prepare("INSERT INTO catalog_versions VALUES('restaurant-menu',?) ON CONFLICT(name) DO UPDATE SET version=excluded.version").run(restaurantMenuVersion);
       this.db.exec('COMMIT');
-    }catch(error){this.db.exec('ROLLBACK');throw error;}
+    } catch(error) { this.db.exec('ROLLBACK'); throw error; }
   }
   list(role: unknown, category: unknown, query: unknown): ManagementRecord[] {
     this.authorize(role, category);
     const type = kind(category), search = text(query, 120);
     if(type==='floor')return this.db.prepare("SELECT id,kind,name,floor_tables FROM development_records WHERE kind='floor' AND archived=0 ORDER BY rowid").all().filter(row=>String(row.name).toLowerCase().includes(search.toLowerCase())).map(row=>({id:String(row.id),kind:'floor',name:String(row.name),phone:'',passport:'',identity:'',pricePaisa:0,quantity:0,tables:JSON.parse(String(row.floor_tables)) as number[]}));
-    const columns = 'r.id,r.kind,r.name,r.phone,r.passport,r.identity,r.pricePaisa,r.quantity,r.username,r.shop_id AS shopId,r.manage_finance AS manageCreditsExpenses,r.image,r.payment_category AS paymentCategory,r.employee,r.employee_id AS employeeId,r.employee_category AS employeeCategory,r.expense_type AS expenseType,r.start_month AS startMonth';
+    const columns = 'r.id,r.kind,r.name,r.phone,r.passport,r.identity,r.pricePaisa,r.quantity,r.half_price AS "halfPricePaisa",r.username,r.shop_id AS shopId,r.manage_finance AS manageCreditsExpenses,r.image,r.payment_category AS paymentCategory,r.employee,r.employee_id AS employeeId,r.employee_category AS employeeCategory,r.expense_type AS expenseType,r.start_month AS startMonth';
     const actor = typeof role === 'object' && role ? role as LocalUser : null;
     if (type === 'shop' && actor?.role === 'cashier') {
       return this.db.prepare(`SELECT ${columns} FROM development_records r JOIN development_records c ON c.shop_id=r.id WHERE c.id=? AND r.kind='shop' AND r.archived=0`).all(actor.id) as unknown as ManagementRecord[];
@@ -157,6 +162,7 @@ export class ManagementStore {
     if (type === 'admin' && !username) throw new Error('Username required.');
     if (!Number.isSafeInteger(r.pricePaisa) || r.pricePaisa < 0 || r.pricePaisa > 999999999 || (['menu','recurring','employee'].includes(type) && r.pricePaisa === 0)) throw new Error('Enter a positive price with at most two decimals.');
     if (!Number.isSafeInteger(r.quantity) || r.quantity < 0 || r.quantity > 999999999) throw new Error('Stock quantity must be a non-negative whole number.');
+    const halfPrice = type === 'menu' ? menuHalfPrice(r.pricePaisa,r.halfPricePaisa) : 0;
     const recordId = id || randomUUID();
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -210,6 +216,7 @@ export class ManagementStore {
     this.db.prepare('UPDATE development_records SET shop_id=?,manage_finance=?,image=?,payment_category=?,employee=?,expense_type=?,start_month=?,employee_category=?,employee_id=? WHERE id=?')
       .run(shopId, r.manageCreditsExpenses ? 1 : 0, type === 'menu' ? image : '', paymentCategory, employee, expenseType, startMonth, employeeCategory, employeeId, recordId);
     if(type==='floor')this.db.prepare('UPDATE development_records SET floor_tables=? WHERE id=?').run(JSON.stringify(r.tables!.slice().sort((a,b)=>a-b)),recordId);
+    this.db.prepare('UPDATE development_records SET half_price=? WHERE id=?').run(halfPrice,recordId);
     if (username) {
       this.db.prepare('UPDATE development_records SET username=? WHERE id=?').run(username,recordId);
       const existing = this.db.prepare('SELECT id FROM local_users WHERE id=?').get(recordId);

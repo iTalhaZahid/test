@@ -1,8 +1,9 @@
 import { PgDatabase } from './database.js';
 import { randomUUID } from 'node:crypto';
+import { menuHalfPrice } from '../../../desktop/src/main/management-contract';
 import type { LocalUser } from '../../../desktop/src/main/auth-contract';
 import type { ManagementRecord, MonthlyExpense, RecordKind } from '../../../desktop/src/main/management-contract';
-import { restaurantMenu } from '../../../desktop/src/main/restaurant-menu';
+import { restaurantMenu, restaurantMenuVersion, restaurantMenuId, restaurantMenuImage } from '../../../desktop/src/main/restaurant-menu';
 function kind(value: unknown): RecordKind {
     if (typeof value !== 'string' || !['cashier', 'creditor', 'menu', 'shop', 'admin', 'payment', 'recurring', 'employee', 'employee-category', 'expense-category', 'floor'].includes(value))
         throw new Error('Invalid record type.');
@@ -63,27 +64,24 @@ export class ManagementStore {
         (await this.installRestaurantMenu());
     }
     async installRestaurantMenu() {
-        if (!this.enabled)
-            return;
-        (await this.db.exec("BEGIN IMMEDIATE"));
+        if (!this.enabled) return;
+        if ((await this.db.prepare("SELECT version FROM catalog_versions WHERE name='restaurant-menu'").get())?.version === restaurantMenuVersion) return;
+        await this.db.exec('BEGIN IMMEDIATE');
         try {
-            (await this.db.prepare("UPDATE development_records SET archived=1 WHERE kind='menu' AND id IN ('sample-menu-1','sample-menu-2','sample-menu-3')").run());
-            const insert = this.db.prepare("INSERT INTO development_records(id,kind,name,phone,passport,identity,\"pricePaisa\",quantity) VALUES(?,'menu',?,'','','',?,0) ON CONFLICT DO NOTHING");
-            for (const [name, price] of restaurantMenu)
-                (await insert.run(`khayber-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name, price));
-            (await this.db.exec("COMMIT"));
-        }
-        catch (error) {
-            (await this.db.exec("ROLLBACK"));
-            throw error;
-        }
+            await this.db.prepare("UPDATE development_records SET archived=1 WHERE kind='menu' AND (id LIKE 'khayber-%' OR id LIKE 'sample-menu-%')").run();
+            const insert = this.db.prepare(`INSERT INTO development_records(id,kind,name,phone,passport,identity,"pricePaisa",quantity,half_price,image,shop_id)
+              VALUES(?,'menu',?,'','','',?,0,?,?,'main-shop') ON CONFLICT(id) DO UPDATE SET name=excluded.name,"pricePaisa"=excluded."pricePaisa",half_price=excluded.half_price,image=excluded.image,archived=0`);
+            for (const [name,price,half=0] of restaurantMenu) await insert.run(restaurantMenuId(name),name,price,half,restaurantMenuImage(name));
+            await this.db.prepare("INSERT INTO catalog_versions VALUES('restaurant-menu',?) ON CONFLICT(name) DO UPDATE SET version=excluded.version").run(restaurantMenuVersion);
+            await this.db.exec('COMMIT');
+        } catch(error) { await this.db.exec('ROLLBACK'); throw error; }
     }
     async list(role: unknown, category: unknown, query: unknown): Promise<ManagementRecord[]> {
         (await this.authorize(role, category));
         const type = kind(category), search = text(query, 120);
         if (type === 'floor')
             return (await this.db.prepare("SELECT id,kind,name,floor_tables FROM development_records WHERE kind='floor' AND archived=0 ORDER BY rowid").all()).filter(row => String(row.name).toLowerCase().includes(search.toLowerCase())).map(row => ({ id: String(row.id), kind: 'floor', name: String(row.name), phone: '', passport: '', identity: '', pricePaisa: 0, quantity: 0, tables: JSON.parse(String(row.floor_tables)) as number[] }));
-        const columns = 'r.id,r.kind,r.name,r.phone,r.passport,r.identity,r."pricePaisa",r.quantity,r.username,r.shop_id AS "shopId",r.manage_finance AS "manageCreditsExpenses",r.image,r.payment_category AS "paymentCategory",r.employee,r.employee_id AS "employeeId",r.employee_category AS "employeeCategory",r.expense_type AS "expenseType",r.start_month AS "startMonth"';
+        const columns = 'r.id,r.kind,r.name,r.phone,r.passport,r.identity,r."pricePaisa",r.quantity,r.half_price AS "halfPricePaisa",r.username,r.shop_id AS "shopId",r.manage_finance AS "manageCreditsExpenses",r.image,r.payment_category AS "paymentCategory",r.employee,r.employee_id AS "employeeId",r.employee_category AS "employeeCategory",r.expense_type AS "expenseType",r.start_month AS "startMonth"';
         const actor = typeof role === 'object' && role ? role as LocalUser : null;
         if (type === 'shop' && actor?.role === 'cashier') {
             return (await this.db.prepare(`SELECT ${columns} FROM development_records r JOIN development_records c ON c.shop_id=r.id WHERE c.id=? AND r.kind='shop' AND r.archived=0`).all(actor.id)) as unknown as ManagementRecord[];
@@ -153,6 +151,7 @@ export class ManagementStore {
             throw new Error('Enter a positive price with at most two decimals.');
         if (!Number.isSafeInteger(r.quantity) || r.quantity < 0 || r.quantity > 999999999)
             throw new Error('Stock quantity must be a non-negative whole number.');
+        const halfPrice = type === 'menu' ? menuHalfPrice(r.pricePaisa,r.halfPricePaisa) : 0;
         const recordId = id || randomUUID();
         (await this.db.exec("BEGIN IMMEDIATE"));
         try {
@@ -221,6 +220,7 @@ export class ManagementStore {
                 .run(shopId, r.manageCreditsExpenses ? 1 : 0, type === 'menu' ? image : '', paymentCategory, employee, expenseType, startMonth, employeeCategory, employeeId, recordId));
             if (type === 'floor')
                 (await this.db.prepare("UPDATE development_records SET floor_tables=? WHERE id=?").run(JSON.stringify(r.tables!.slice().sort((a, b) => a - b)), recordId));
+            (await this.db.prepare("UPDATE development_records SET half_price=? WHERE id=?").run(halfPrice,recordId));
             if (username) {
                 (await this.db.prepare("UPDATE development_records SET username=? WHERE id=?").run(username, recordId));
                 const existing = (await this.db.prepare("SELECT id FROM local_users WHERE id=?").get(recordId));

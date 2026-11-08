@@ -43,7 +43,7 @@ export class SyncStore {
   private track(table: string, entity: string, key: string, condition='1') {
     const columns=this.db.prepare(`PRAGMA table_info(${table})`).all().map(row=>String(row.name));
     const payload=table==='recurring_payments'?'NEW.payload':`json_object(${columns.flatMap(column=>[`'${column}'`,column==='verifier'?`hex(NEW.${column})`:`NEW.${column}`]).join(',')})`;
-    for(const action of ['INSERT','UPDATE'])this.db.exec(`CREATE TRIGGER IF NOT EXISTS sync_${table}_${action} AFTER ${action}${table==='local_users'&&action==='UPDATE'?' OF username,display_name,verifier,role':''} ON ${table}
+    for(const action of ['INSERT','UPDATE'])this.db.exec(`DROP TRIGGER IF EXISTS sync_${table}_${action}; CREATE TRIGGER sync_${table}_${action} AFTER ${action}${table==='local_users'&&action==='UPDATE'?' OF username,display_name,verifier,role':''} ON ${table}
       WHEN (SELECT applying FROM sync_control WHERE id=1)=0 AND (${condition}) BEGIN
         INSERT INTO sync_queue(entity,key,payload) VALUES('${entity}',${key},${payload}); END;`);
   }
@@ -133,7 +133,7 @@ export class SyncStore {
         if(change.entity==='user'&&this.db.prepare("SELECT key FROM sync_queue WHERE entity='record' AND key=?").get(change.key))continue;
         const known=this.db.prepare('SELECT version FROM sync_versions WHERE entity=? AND key=?').get(change.entity,change.key);
         if(known&&Number(known.version)>=change.version)continue;
-        const payload=change.payload;
+        const payload=change.entity==='record'?{half_price:0,...change.payload}:change.payload;
         if(change.entity==='record') {
           const columns=this.db.prepare('PRAGMA table_info(development_records)').all().map(row=>String(row.name));
           if(payload.id!==change.key||columns.some(column=>!(column in payload)))throw new Error('Incomplete catalog record.');
