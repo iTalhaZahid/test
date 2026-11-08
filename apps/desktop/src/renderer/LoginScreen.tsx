@@ -110,7 +110,8 @@ export function LoginScreen({ platform = 'desktop' }: { platform?: 'desktop' | '
               {busy ? 'Signing in…' : !state ? 'Sign-in unavailable' : 'Sign in'}<ArrowRight size={18} aria-hidden="true" />
             </button>
           </form>
-          {state && (!state.demo || window.posSync) && <p className="mt-6 text-sm leading-6 text-slate-600">Connect to the POS server for your first sign-in. Previously verified users can sign in offline on this device.</p>}
+          {state && platform==='desktop' && !window.posOnline && (!state.demo || window.posSync) && <p className="mt-6 text-sm leading-6 text-slate-600">Connect to the POS server for your first sign-in. Previously verified users can sign in offline on this device.</p>}
+          {window.posOnline && <p className="mt-6 text-sm leading-6 text-slate-600">Internet is required to sign in and save transactions. Shared catalogs stay cached after sign-out.</p>}
         </>
         {error && <p id="login-error" role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700">{error}</p>}
       </div>

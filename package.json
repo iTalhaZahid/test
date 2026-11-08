@@ -22,7 +22,8 @@
     "package:demo": "corepack pnpm --filter @pos/desktop package:demo",
     "db:migrate": "corepack pnpm --filter @pos/backend db:migrate",
     "test:neon": "corepack pnpm --filter @pos/backend test:neon",
-    "package:standalone": "corepack pnpm --filter @pos/desktop package:standalone"
+    "package:standalone": "corepack pnpm --filter @pos/desktop package:standalone",
+    "package:online": "corepack pnpm --filter @pos/desktop package:online"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -7,14 +7,15 @@
   "main": "dist/main/main.js",
   "scripts": {
     "postinstall": "install-electron",
-    "test": "tsc -p tsconfig.main.json && node scripts/test-main.mjs && node --test scripts/report-chart-data.test.mjs scripts/report-export.test.mjs scripts/sales-receipt.test.mjs scripts/sync-status.test.mjs",
+    "test": "tsc -p tsconfig.main.json && node scripts/test-main.mjs && node --test scripts/report-chart-data.test.mjs scripts/report-export.test.mjs scripts/sales-receipt.test.mjs scripts/catalog-cache.test.mjs scripts/sync-status.test.mjs",
     "dev": "pnpm build && electron .",
     "build": "tsc -p tsconfig.main.json && vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json --noEmit",
     "start": "electron .",
     "package:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
     "package:demo": "pnpm build && electron-builder --config electron-builder.demo.yml --win nsis --x64 --publish never",
-    "package:standalone": "corepack pnpm build && node scripts/package-standalone.mjs"
+    "package:standalone": "corepack pnpm build && node scripts/package-standalone.mjs",
+    "package:online": "corepack pnpm build && node scripts/package-standalone.mjs --online"
   },
   "dependencies": {
     "exceljs": "4.4.0",

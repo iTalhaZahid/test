@@ -24,6 +24,6 @@ export function SyncStatusPill() {
   if(!window.posSync)return null;
   const offline=status.state==='offline',syncing=status.state==='syncing',problem=status.state==='error'||status.state==='auth-required';
   const Icon=offline?WifiOff:syncing?RefreshCw:problem?CircleAlert:CloudCheck;
-  const label=offline?'Working in offline Mode':syncing?'Syncing':status.state==='auth-required'?'Online sign-in required':problem?'Sync needs attention':'Synced';
+  const label=window.posOnline?(offline?'Offline':syncing?'Connecting':problem?'Connection needs attention':'Online'):offline?'Working in offline Mode':syncing?'Syncing':status.state==='auth-required'?'Online sign-in required':problem?'Sync needs attention':'Synced';
   return <span role="status" aria-live="polite" title={status.message||`${status.pending} changes waiting to sync`} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${offline?'border-amber-200 bg-amber-50 text-amber-800':problem?'border-red-200 bg-red-50 text-red-800':syncing?'border-blue-200 bg-blue-50 text-blue-800':'border-emerald-200 bg-emerald-50 text-emerald-800'}`}><Icon size={14} aria-hidden="true"/>{label}</span>;
 }
