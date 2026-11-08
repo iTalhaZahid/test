@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.build.json --noEmit && esbuild src/server.ts --bundle --platform=node --format=esm --packages=external --target=node24 --outfile=dist/server.js",
-    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.mts",
+    "build": "tsc -p tsconfig.build.json --noEmit && esbuild src/server.mts --bundle --platform=node --format=esm --packages=external --target=node24 --outfile=dist/server.mjs",
+    "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/app.test.ts src/models/web-store.test.ts scripts/sync.integration.test.mjs"
   },

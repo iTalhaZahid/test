@@ -1,6 +1,6 @@
 # Online POS API
 
-The API uses MVC folders: `src/models` owns validation and persistent data, `src/controllers` handles HTTP requests and JSON responses, and `src/routes` maps endpoints. `app.ts` configures Express; `server.ts` opens storage and starts the process. No Redis or new dependency is needed.
+The API uses MVC folders: `src/models` owns validation and persistent data, `src/controllers` handles HTTP requests and JSON responses, and `src/routes` maps endpoints. `app.ts` configures Express; `server.mts` opens storage and starts the process. Its standalone ESM build is `dist/server.mjs`.
 
 ## Start locally
 

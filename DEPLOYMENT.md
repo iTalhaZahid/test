@@ -3,6 +3,10 @@
 The root `vercel.json` defines two services: `admin-web` (Next.js) and `backend`
 (Express). Electron stays a separately packaged desktop application.
 
+The backend entry is explicitly ESM (`src/server.mts`), and its standalone build
+is `dist/server.mjs`. These extensions preserve the module format when a hosting
+runtime relocates the entry outside the backend package's `type: module` scope.
+
 ## Services and routing
 
 | Public path | Service | Behavior |
