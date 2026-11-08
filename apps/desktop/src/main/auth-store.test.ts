@@ -6,10 +6,29 @@ import { test } from 'node:test';
 import { AuthStore, DEMO_PASSWORD, DEMO_USERNAME, ADMIN_USERNAME, ADMIN_PASSWORD } from './auth-store';
 import { ManagementStore } from './management-store';
 import { allowsDemo } from './runtime-mode';
+import { backendConfig } from './backend-config';
+import { writeFileSync } from 'node:fs';
+
+test('desktop backend configuration supports packaged and per-terminal URLs without database secrets', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'pos-config-'));
+  const file = path.join(directory, 'pos-config.json');
+  try {
+    assert.equal(backendConfig(undefined, [file]), undefined);
+    writeFileSync(file, JSON.stringify({ POS_API_URL: 'https://pos.example.com/' }));
+    assert.equal(backendConfig(undefined, [file]), 'https://pos.example.com');
+    assert.equal(backendConfig('http://127.0.0.1:4000', [file]), 'http://127.0.0.1:4000');
+    for (const url of ['postgresql://user:secret@host/db', 'http://remote.example', 'https://host/api', 'https://user:secret@host']) {
+      assert.throws(() => backendConfig(url, []));
+    }
+    writeFileSync(file, '{}');
+    assert.throws(() => backendConfig(undefined, [file]), /requires POS_API_URL/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 
 test('only development and the explicitly named demo package enable demo access', () => {
   assert.equal(allowsDemo(false, '@pos/desktop'), true);
   assert.equal(allowsDemo(true, 'POS Terminal Demo'), true);
+  assert.equal(allowsDemo(true, 'POS Terminal Standalone'), true);
   assert.equal(allowsDemo(true, 'POS Terminal'), false);
   assert.equal(allowsDemo(true, '@pos/desktop'), false);
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Utensils } from 'lucide-react';
 import { salesInvoiceNumber } from './sales-invoice';
+import { printWebReceipt } from './print-web-receipt';
 import { createPortal } from 'react-dom';
 import type { Sale } from '../main/sales-contract';
 
@@ -34,7 +35,7 @@ export function SalesReceipt({sale,onClose,autoPrint=false,onPrinted}:{sale:Sale
       await document.fonts.ready;
       await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
       if(window.posPrinter){await window.posPrinter.printReceipt();setStatus('Receipt sent to printer.');}
-      else window.print();
+      else printWebReceipt();
       if(autoPrint)onPrinted?.();
     } catch(error){const message=`Order is saved. ${error instanceof Error?error.message:'Printing failed.'} Retry Print last receipt.`;setStatus(message);if(autoPrint)onPrinted?.(message);}
     finally{setPrinting(false);}

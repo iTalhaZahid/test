@@ -11,8 +11,9 @@ const source=readFileSync(new URL('../src/renderer/SalesReceipt.tsx',import.meta
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const {receivedAmountError}=await import('../src/renderer/received-amount.ts');
 const invoices=await import('../src/renderer/sales-invoice.ts');
+const webPrinting=await import('../src/renderer/print-web-receipt.ts');
 const module={exports:{}};
-new Function('require','module','exports',compiled)(name=>name==='./sales-invoice'?invoices:name==='react-dom'?{createPortal:children=>children}:require(name),module,module.exports);
+new Function('require','module','exports',compiled)(name=>name==='./print-web-receipt'?webPrinting:name==='./sales-invoice'?invoices:name==='react-dom'?{createPortal:children=>children}:require(name),module,module.exports);
 const {ReceiptContent,SalesReceipt}=module.exports;
 const sale={invoiceNumber:1001,id:'3edf3a7c-229e-4aea-a407-c3170d2410cd',date:'2026-11-08T08:24:00Z',table:{floorName:'Ground Floor',label:'G1'},shopName:'Main <Shop>',businessDate:'2026-11-08',cashierName:'Cashier One',lines:[{name:'Meal & drink',quantity:2,unitPrice:1000,total:2000}],subtotal:2000,discountMinor:200,discount:{type:'percent',value:1000},total:1800,received:2000,change:200,credit:0};
 test('receipt preserves saved values, escapes names and includes discount and change',()=>{
@@ -79,7 +80,7 @@ test('Save & Print uses the browser dialog on web and the native printer on desk
   try{
    const hooks={useRef:value=>({current:value}),useState:value=>[value,()=>{}],useEffect:effect=>effects.push(effect)};
    const instance={exports:{}};
-   new Function('require','module','exports',compiled)(name=>name==='react'?hooks:name==='./sales-invoice'?invoices:name==='react-dom'?{createPortal:children=>children}:require(name),instance,instance.exports);
+   new Function('require','module','exports',compiled)(name=>name==='./print-web-receipt'?{printWebReceipt:()=>window.print()}:name==='react'?hooks:name==='./sales-invoice'?invoices:name==='react-dom'?{createPortal:children=>children}:require(name),instance,instance.exports);
    let completed;
    const done=new Promise(resolve=>{completed=resolve;});
    instance.exports.SalesReceipt({sale,autoPrint:true,onClose:()=>{},onPrinted:completed});
@@ -94,5 +95,32 @@ test('Save & Print uses the browser dialog on web and the native printer on desk
    if(previous.document===undefined)delete globalThis.document;else globalThis.document=previous.document;
    if(previous.frame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=previous.frame;
   }
+ }
+});
+
+test('web printing fits short and long bills and cleans up after print or cancellation',()=>{
+ const previous={document:globalThis.document,window:globalThis.window};
+ try {
+  for(const [height,fails] of [[96,false],[960,false],[96,true],[0,false]]) {
+   const copy={style:{},getBoundingClientRect:()=>({height}),remove:()=>{copy.removed=true;}};
+   const page={remove:()=>{page.removed=true;}};
+   globalThis.document={querySelector:()=>({cloneNode:()=>copy}),body:{append:()=>{}},head:{append:()=>{}},createElement:()=>page};
+   let printed=false;
+   globalThis.window={print:()=>{
+    printed=true;
+    assert.equal(page.media,'print');
+    assert.equal(page.textContent,`@page { size: 80mm ${Math.ceil(height*25.4/96)+8}mm; margin: 4mm; }`);
+    assert.ok(copy.removed);
+    if(fails)throw new Error('Print cancelled');
+   }};
+   if(fails||!height)assert.throws(()=>webPrinting.printWebReceipt());
+   else webPrinting.printWebReceipt();
+   assert.equal(printed,height>0);
+   assert.ok(copy.removed);
+   if(height)assert.ok(page.removed);
+  }
+ }finally{
+  if(previous.document===undefined)delete globalThis.document;else globalThis.document=previous.document;
+  if(previous.window===undefined)delete globalThis.window;else globalThis.window=previous.window;
  }
 });

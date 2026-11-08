@@ -62,6 +62,8 @@ test('online provisioning, encrypted offline login, durable local tasks, reconne
   const record={id:'',kind:'menu',name:'Offline Meal',phone:'',passport:'',identity:'',pricePaisa:500,quantity:0,shopId:'main-shop'};
   try {
     open();
+    await engine.retry();
+    assert.equal(engine.status().state,'auth-required');
     offline=true;
     assert.equal((await engine.login('superadmin','PosSuperAdmin123!')).ok,false);
     offline=false;

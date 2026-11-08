@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { PrinterInfo, WebContentsPrintOptions } from 'electron';
 import { printReceipt } from './receipt-printer';
 
-test('receipt printing detects printers, uses the OS default and reports spooler failures', async () => {
+test('receipt printing excludes file printers, selects hardware and reports spooler failures', async () => {
   let printers: PrinterInfo[] = [];
   const calls: WebContentsPrintOptions[] = [];
   let success = true;
@@ -22,7 +22,16 @@ test('receipt printing detects printers, uses the OS default and reports spooler
   assert.equal(calls.at(-1)?.usePrinterDefaultPageSize, true);
   printers.push({ ...printers[0], name: 'Office' });
   await printReceipt(contents);
-  assert.equal(calls.at(-1)?.deviceName, '');
+  assert.equal(calls.at(-1)?.deviceName, 'Thermal 80');
+  assert.equal(calls.at(-1)?.silent, false);
+  printers = [printers[0], { ...printers[0], name: 'Microsoft Print to PDF' }];
+  await printReceipt(contents);
+  assert.equal(calls.at(-1)?.deviceName, 'Thermal 80');
+  assert.equal(calls.at(-1)?.silent, true);
   success = false;
   await assert.rejects(printReceipt(contents), /Printer offline/);
+  const count = calls.length;
+  printers = [{ ...printers[0], name: 'Microsoft Print to PDF' }];
+  await assert.rejects(printReceipt(contents), /Save As dialog/);
+  assert.equal(calls.length, count);
 });

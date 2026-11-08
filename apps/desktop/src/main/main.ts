@@ -10,10 +10,12 @@ import { SyncEngine } from './sync-engine';
 import { printReceipt } from './receipt-printer';
 import type { LocalUser } from './auth-contract';
 import { allowsDemo } from './runtime-mode';
+import { backendConfig } from './backend-config';
 
 const rendererPath = path.join(__dirname, '../renderer/index.html');
-const demo = allowsDemo(app.isPackaged, app.getName());
-const dataDirectory = path.join(app.getPath('appData'), app.isPackaged ? (demo ? 'POS Terminal Demo' : 'POS Terminal') : 'POS Terminal Development');
+const standalone = app.isPackaged && app.getName() === 'POS Terminal Standalone';
+let demo = allowsDemo(app.isPackaged, app.getName());
+const dataDirectory = path.join(app.getPath('appData'), app.isPackaged ? (standalone ? 'POS Terminal Standalone' : demo ? 'POS Terminal Demo' : 'POS Terminal') : 'POS Terminal Development');
 const sessionDirectory = path.join(dataDirectory, 'chromium');
 // Chromium chooses its cache during startup, before the ready event.
 mkdirSync(sessionDirectory, { recursive: true });
@@ -56,6 +58,8 @@ async function createWindow() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else app.whenReady().then(async () => {
+  const backend = backendConfig(process.env.POS_API_URL, [path.join(dataDirectory, 'pos-config.json'), path.join(app.getAppPath(), 'pos-config.json')], standalone ? undefined : 'http://127.0.0.1:4000');
+  if (standalone && backend) demo = false;
   if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('OS credential protection is unavailable');
   store = new AuthStore(path.join(dataDirectory, 'pos.sqlite'), {
     encrypt: value => safeStorage.encryptStringAsync(value),
@@ -64,17 +68,19 @@ if (!app.requestSingleInstanceLock()) {
   await store.initialize();
   management = new ManagementStore(path.join(dataDirectory, 'pos.sqlite'), true, true);
   if (demo) management.seed(await store.cashierVerifier('PosCashier123!'));
-  const recoveryDirectory = path.join(app.getPath('appData'), app.isPackaged ? (demo ? 'POS Demo Recovery' : 'POS Recovery') : 'POS Development Recovery');
+  const recoveryDirectory = path.join(app.getPath('appData'), app.isPackaged ? (standalone ? 'POS Standalone Recovery' : demo ? 'POS Demo Recovery' : 'POS Recovery') : 'POS Development Recovery');
   mkdirSync(recoveryDirectory, { recursive:true });
   sales = new SalesStore(path.join(dataDirectory,'pos.sqlite'),path.join(recoveryDirectory,'pending.sqlite'),payload => safeStorage.encryptString(payload));
-  syncStore=new SyncStore(path.join(dataDirectory,'pos.sqlite'),{
-    encrypt:value=>safeStorage.encryptString(value),
-    decrypt:value=>safeStorage.decryptString(Buffer.from(value)),
-  },process.env.POS_API_URL||'http://127.0.0.1:4000');
-  sync=new SyncEngine(syncStore,store);
-  sync.start();
-  ipcMain.handle('sync:status',event=>{assertLocalSender(event);return sync!.status();});
-  ipcMain.handle('sync:retry',event=>{assertLocalSender(event);void sync!.retry();});
+  if (backend) {
+    syncStore=new SyncStore(path.join(dataDirectory,'pos.sqlite'),{
+      encrypt:value=>safeStorage.encryptString(value),
+      decrypt:value=>safeStorage.decryptString(Buffer.from(value)),
+    },backend);
+    sync=new SyncEngine(syncStore,store);
+    sync.start();
+  }
+  ipcMain.handle('sync:status',event=>{assertLocalSender(event);return sync?.status() ?? {state:'offline',pending:0,message:'No POS server configured. Set POS_API_URL in pos-config.json and restart. Sales remain saved locally.'};});
+  ipcMain.handle('sync:retry',event=>{assertLocalSender(event);void sync?.retry();});
   ipcMain.handle('management:monthly', (event, month: unknown) => { assertLocalSender(event); return management!.monthly(actor(),month); });
   ipcMain.handle('management:record-payment', (event, id: unknown, month: unknown, amount: unknown, operationId: unknown) => { assertLocalSender(event); const user=actor(); if(!user) throw new Error('Sign in.'); return management!.recordPayment(user,id,month,amount,operationId); });
   ipcMain.handle('management:set-paid', (event, id: unknown, month: unknown, paid: unknown) => { assertLocalSender(event); const user=actor(); if(!user) throw new Error('Sign in.'); return management!.setPaid(user,id,month,paid); });
@@ -121,7 +127,7 @@ if (!app.requestSingleInstanceLock()) {
     const version = ++sessionVersion;
     currentUser = null;
     try {
-      const result = await sync!.login(username, password);
+      const result = await (sync ? sync.login(username, password) : store!.login(username, password));
       if (version !== sessionVersion) return { ok: false, message: 'Sign-in cancelled. Please try again.' };
       if (result.ok) currentUser = result.user;
       return result;
@@ -138,7 +144,10 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle('auth:change-password', async (event, current: unknown, next: unknown) => {
     assertLocalSender(event);
     if (!currentUser || !actor()) throw new Error('Sign in to continue.');
-    await sync!.changePassword(actor()!,current,next);
+    if (!sync) {
+      const version = sessionVersion;
+      await store!.changePassword(actor()!.id,current,next,()=>version===sessionVersion);
+    } else await sync!.changePassword(actor()!,current,next);
   });
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);

@@ -1,0 +1,10 @@
+extends: ./electron-builder.yml
+appId: com.pos.terminal.standalone
+productName: POS Terminal Standalone
+extraMetadata:
+  name: pos-terminal-standalone
+  productName: POS Terminal Standalone
+directories:
+  output: release/standalone
+win:
+  artifactName: POS-Terminal-Standalone-${version}-Setup.${ext}

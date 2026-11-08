@@ -106,7 +106,7 @@ export class SyncEngine {
       const health=await this.request('/health');
       if(health.status!=='ok')throw new Error('POS server unavailable.');
       const credentials=this.store.credentials();
-      if(!credentials.deviceToken){this.statusValue={state:'online',pending:this.store.pending()};return;}
+      if(!credentials.deviceToken){this.statusValue={state:'auth-required',pending:this.store.pending(),message:'Sign in with a POS server account to pair this terminal and sync.'};return;}
       this.statusValue={state:'syncing',pending:this.store.pending()};
       for(let batch=0;batch<10;batch++) {
         const changes=this.store.batch();

@@ -89,9 +89,9 @@ html { scrollbar-gutter: stable; }
 .receipt-auto { display:none; }
 @media print {
   @page { size:auto; margin:4mm; }
-  html,body { background:white!important; margin:0!important; padding:0!important; min-width:0!important; scrollbar-gutter:auto; }
+  html,body { background:white!important; margin:0!important; padding:0!important; min-width:0!important; height:auto!important; min-height:0!important; overflow:visible!important; scrollbar-gutter:auto; }
   body:has(> .receipt-dialog) > :not(.receipt-dialog) { display:none!important; }
-  .receipt-dialog { display:block!important; position:static!important; width:72mm!important; max-width:none!important; height:auto!important; max-height:none!important; overflow:visible!important; margin:0!important; padding:0!important; border:0!important; border-radius:0!important; box-shadow:none!important; }
+  .receipt-dialog { display:block!important; position:static!important; inset:auto!important; width:72mm!important; max-width:none!important; height:auto!important; min-height:0!important; max-height:none!important; overflow:visible!important; margin:0!important; padding:0!important; border:0!important; border-radius:0!important; box-shadow:none!important; }
   .receipt-dialog::backdrop,.receipt-controls { display:none!important; }
 }
 
