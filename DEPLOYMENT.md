@@ -7,6 +7,12 @@ The backend entry is explicitly ESM (`src/server.mts`), and its standalone build
 is `dist/server.mjs`. These extensions preserve the module format when a hosting
 runtime relocates the entry outside the backend package's `type: module` scope.
 
+For Vercel, the backend service runs type checking and uses `outputDirectory: "."`
+with its source entry. Do not change that to `dist`: the Services builder can
+flatten the compiled entry while retaining pnpm dependencies at workspace paths,
+causing module-format and missing-package startup errors. The standalone build
+command remains available for Docker and persistent Node hosting.
+
 ## Services and routing
 
 | Public path | Service | Behavior |

@@ -20,6 +20,8 @@
       "root": "apps/backend",
       "framework": "express",
       "entrypoint": "src/server.mts",
+      "buildCommand": "corepack pnpm typecheck",
+      "outputDirectory": ".",
       "installCommand": "ELECTRON_SKIP_BINARY_DOWNLOAD=1 corepack pnpm install --frozen-lockfile"
     }
   },
