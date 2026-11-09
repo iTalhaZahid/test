@@ -51,13 +51,12 @@ export class PgDatabase {
   close() { /* The request transaction owns the pooled connection. */ }
 }
 
-export async function transaction<T>(pool: Pool, schema: 'pos_web' | 'pos_sync', run: (db: PgDatabase) => Promise<T>) {
+export async function transaction<T>(pool: Pool, schema: 'pos_web' | 'pos_sync', run: (db: PgDatabase) => Promise<T>, readOnly = false) {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query(`SET LOCAL search_path TO ${schema}`);
+    await client.query(`${readOnly ? 'BEGIN READ ONLY' : 'BEGIN'}; SET LOCAL search_path TO ${schema}`);
     // One business per backend: serialize financial decisions and sync versions across instances.
-    await client.query('SELECT pg_advisory_xact_lock($1)', [schema === 'pos_web' ? 71001 : 71002]);
+    if (!readOnly) await client.query('SELECT pg_advisory_xact_lock($1)', [schema === 'pos_web' ? 71001 : 71002]);
     const value = await run(new PgDatabase(client));
     const commit = await client.query('COMMIT');
     if (commit.command !== 'COMMIT') throw new Error('Database transaction was rolled back.');
