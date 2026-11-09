@@ -6,6 +6,7 @@ import { PgWebStore } from './web-store.js';
 import { webRoutes } from '../routes/web-routes.js';
 import { loginLimiter } from '../routes/pos-routes.js';
 import { ApiError, integer } from '../models/validation.js';
+import { webSyncRoutes } from '../routes/web-sync-routes.js';
 
 function bearer(request: Request) {
   const header = request.get('authorization');
@@ -23,9 +24,11 @@ export function createPostgresApp(pool: Pool) {
   app.disable('x-powered-by');
   app.use((_request, response, next) => { response.set('Cache-Control', 'no-store'); next(); });
   app.get('/health', (_request, response) => { response.json({ status: 'ok' }); });
-  app.use('/api/pos', webRoutes(work => transaction(pool, 'pos_web', db => work(new PgWebStore(db, process.env.POS_WEB_DEMO === '1')))));
+  app.use('/api/pos', webRoutes((work, operation) => transaction(pool, 'pos_web', db => work(new PgWebStore(db, process.env.POS_WEB_DEMO === '1')),
+    ['auth:state','management:list','sales:payment-methods','sales:menu','sales:creditors'].includes(operation))));
   app.use(express.json({ limit: '16mb' }));
-  app.use(['/api/v1/auth/login', '/api/v1/auth/password'], loginLimiter());
+  app.use(['/api/v1/auth/login', '/api/v1/auth/password', '/api/v1/web/auth/login'], loginLimiter());
+  app.use('/api/v1/web',webSyncRoutes(pool));
 
   const route = (method: 'get' | 'post', path: string, run: (model: PosModel, request: Request) => Promise<unknown>, status = 200) => {
     app[method](path, async (request, response) => {

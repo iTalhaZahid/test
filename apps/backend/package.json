@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/app.test.ts src/models/web-store.test.ts scripts/sync.integration.test.mjs",
     "db:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx scripts/migrate.mts",
-    "test:neon": "node --env-file-if-exists=../../.env.neon-test --import tsx --test src/postgres/neon.integration.test.ts"
+    "test:neon": "node --env-file-if-exists=../../.env.neon-test --import tsx --test src/postgres/neon.integration.test.ts",
+    "test:offline-sync": "node --env-file=../../.env.neon-test --import tsx --test src/postgres/web-sync.integration.test.ts"
   },
   "dependencies": {
     "@vercel/functions": "3.11.0",

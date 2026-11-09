@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, session } from 'electron';
 import path from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync,existsSync,readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { AuthStore } from './auth-store';
 import { ManagementStore } from './management-store';
@@ -14,8 +15,10 @@ import { backendConfig } from './backend-config';
 
 const rendererPath = path.join(__dirname, '../renderer/index.html');
 const standalone = app.isPackaged && app.getName() === 'POS Terminal Standalone';
+const website = app.getName() === 'POS Terminal Online' || process.env.POS_WEB_OFFLINE === '1';
 let demo = allowsDemo(app.isPackaged, app.getName());
-const dataDirectory = path.join(app.getPath('appData'), app.isPackaged ? (standalone ? 'POS Terminal Standalone' : demo ? 'POS Terminal Demo' : 'POS Terminal') : 'POS Terminal Development');
+if(website)demo=false;
+const dataDirectory = path.join(app.getPath('appData'), website?'POS Terminal Online':app.isPackaged ? (standalone ? 'POS Terminal Standalone' : demo ? 'POS Terminal Demo' : 'POS Terminal') : 'POS Terminal Development');
 const sessionDirectory = path.join(dataDirectory, 'chromium');
 // Chromium chooses its cache during startup, before the ready event.
 mkdirSync(sessionDirectory, { recursive: true });
@@ -29,7 +32,7 @@ let syncStore: SyncStore | undefined;
 let currentUser: LocalUser | null = null;
 let sessionVersion = 0;
 
-function actor() { return currentUser ? store!.user(currentUser.id) : null; }
+function actor() { const user=currentUser ? store!.user(currentUser.id) : null;syncStore?.setActor(user?.id||'');return user; }
 
 function assertLocalSender(event: Electron.IpcMainInvokeEvent) {
   if (event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== pathToFileURL(rendererPath).href) {
@@ -58,7 +61,10 @@ async function createWindow() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else app.whenReady().then(async () => {
-  const backend = backendConfig(process.env.POS_API_URL, [path.join(dataDirectory, 'pos-config.json'), path.join(app.getAppPath(), 'pos-config.json')], standalone ? undefined : 'http://127.0.0.1:4000');
+  const envFile=path.join(app.isPackaged?path.dirname(app.getPath('exe')):path.resolve(__dirname,'../../../..'),'.env');
+  const environment=website&&existsSync(envFile)?parseEnv(readFileSync(envFile,'utf8')):{};
+  const backend = backendConfig(process.env.POS_API_URL||environment.POS_API_URL, [path.join(dataDirectory, 'pos-config.json'), path.join(app.getAppPath(), 'pos-config.json')], standalone||website ? undefined : 'http://127.0.0.1:4000');
+  if(website&&!backend)throw new Error('POS_API_URL is required for website sync.');
   if (standalone && backend) demo = false;
   if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('OS credential protection is unavailable');
   store = new AuthStore(path.join(dataDirectory, 'pos.sqlite'), {
@@ -68,14 +74,14 @@ if (!app.requestSingleInstanceLock()) {
   await store.initialize();
   management = new ManagementStore(path.join(dataDirectory, 'pos.sqlite'), true, true);
   if (demo) management.seed(await store.cashierVerifier('PosCashier123!'));
-  const recoveryDirectory = path.join(app.getPath('appData'), app.isPackaged ? (standalone ? 'POS Standalone Recovery' : demo ? 'POS Demo Recovery' : 'POS Recovery') : 'POS Development Recovery');
+  const recoveryDirectory = path.join(app.getPath('appData'), website?'POS Online Recovery':app.isPackaged ? (standalone ? 'POS Standalone Recovery' : demo ? 'POS Demo Recovery' : 'POS Recovery') : 'POS Development Recovery');
   mkdirSync(recoveryDirectory, { recursive:true });
   sales = new SalesStore(path.join(dataDirectory,'pos.sqlite'),path.join(recoveryDirectory,'pending.sqlite'),payload => safeStorage.encryptString(payload));
   if (backend) {
     syncStore=new SyncStore(path.join(dataDirectory,'pos.sqlite'),{
       encrypt:value=>safeStorage.encryptString(value),
       decrypt:value=>safeStorage.decryptString(Buffer.from(value)),
-    },backend);
+    },backend,website);
     sync=new SyncEngine(syncStore,store);
     sync.start();
   }

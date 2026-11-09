@@ -33,14 +33,20 @@ export class PgWebStore {
     async user(token: string | undefined): Promise<LocalUser | null> {
         if (!token || !this.demo)
             return null;
-        const row = (await this.db.prepare("SELECT u.id,u.username,u.display_name,u.role FROM web_sessions s\n      JOIN local_users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?\n      AND NOT EXISTS(SELECT 1 FROM development_records r WHERE r.id=u.id AND r.archived=1)")
+        const row = (await this.db.prepare(`SELECT u.id,u.username,u.display_name,u.role,u.is_superuser,
+          r.id AS profile_id,r.shop_id,r.manage_finance FROM web_sessions s
+          JOIN local_users u ON u.id=s.user_id
+          LEFT JOIN development_records r ON r.id=u.id
+          WHERE s.token=? AND s.expires>? AND COALESCE(r.archived,0)=0`)
             .get((await this.hash(token)), Date.now()));
-        return row ? (await this.auth.user(String(row.id))) : null;
+        return row ? { id:String(row.id),username:String(row.username),displayName:String(row.display_name),
+            role:row.is_superuser===1?'superuser':row.role==='admin'?'admin':'cashier',
+            manageCreditsExpenses:row.manage_finance===1,shopId:row.profile_id?String(row.shop_id):undefined } : null;
     }
-    async session(user: LocalUser) {
+    async session(user: LocalUser, lifetime = 8 * 60 * 60 * 1000) {
         const token = randomBytes(32).toString('hex');
         (await this.db.prepare("DELETE FROM web_sessions WHERE expires<=?").run(Date.now()));
-        (await this.db.prepare("INSERT INTO web_sessions VALUES(?,?,?)").run((await this.hash(token)), user.id, Date.now() + 8 * 60 * 60 * 1000));
+        (await this.db.prepare("INSERT INTO web_sessions VALUES(?,?,?)").run((await this.hash(token)), user.id, Date.now() + lifetime));
         return token;
     }
     async logout(token: string | undefined) {
@@ -67,9 +73,10 @@ export class PgWebStore {
                 if ((candidate?.kind === 'cashier' || candidate?.kind === 'admin') && (typeof candidate.username !== 'string' || !candidate.username.trim()))
                     throw new Error('Username required.');
                 const verifier = (candidate?.kind === 'cashier' || candidate?.kind === 'admin') && candidate.password ? await (await this.auth.cashierVerifier(candidate.password)) : undefined;
-                if (!(await this.user(token)))
+                const currentUser=await this.user(token);
+                if (!currentUser)
                     throw new Error('Session changed.');
-                return (await this.management.save((await this.user(token)), first, verifier));
+                return (await this.management.save(currentUser, first, verifier));
             }
             case 'management:monthly': return (await this.management.monthly(user, first));
             case 'management:record-payment': return (await this.management.recordPayment(user, first, second, args[2], args[3]));

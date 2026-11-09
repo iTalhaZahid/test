@@ -42,6 +42,11 @@ export class AuthStore {
         const hash = await deriveKey(password, salt, 64) as Buffer;
         return this.protection.encrypt(JSON.stringify({ salt, hash: hash.toString('hex') }));
     }
+    async importVerifier(value: unknown) {
+        const verifier = value as { salt?: unknown; hash?: unknown } | null;
+        if (!verifier || typeof verifier.salt !== 'string' || !/^[a-f0-9]{32}$/i.test(verifier.salt) || typeof verifier.hash !== 'string' || !/^[a-f0-9]{128}$/i.test(verifier.hash)) throw new Error('Invalid offline account verifier.');
+        return this.protection.encrypt(JSON.stringify({ salt: verifier.salt, hash: verifier.hash }));
+    }
     async changePassword(userId: string, current: unknown, next: unknown, stillAuthorized: () => Promise<boolean>) {
         if (!this.allowDemo)
             throw new Error('Password changes require online provisioning in releases.');

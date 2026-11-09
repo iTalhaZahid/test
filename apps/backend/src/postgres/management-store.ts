@@ -106,7 +106,7 @@ export class ManagementStore {
                 return employee ? { ...row, employee: String(employee.name), employeeCategory: employee.kind === 'cashier' ? 'Cashier' : String(employee.employee_category) } : row;
             }))), ...salaries].sort((a, b) => a.name.localeCompare(b.name));
     }
-    async save(role: unknown, value: unknown, verifier?: Buffer) {
+    async save(role: unknown, value: unknown, verifier?: Buffer, newId?: string) {
         if (!value || typeof value !== 'object')
             throw new Error('Invalid record.');
         const r = value as ManagementRecord;
@@ -152,7 +152,7 @@ export class ManagementStore {
         if (!Number.isSafeInteger(r.quantity) || r.quantity < 0 || r.quantity > 999999999)
             throw new Error('Stock quantity must be a non-negative whole number.');
         const halfPrice = type === 'menu' ? menuHalfPrice(r.pricePaisa,r.halfPricePaisa) : 0;
-        const recordId = id || randomUUID();
+        const recordId = id || newId || randomUUID();
         (await this.db.exec("BEGIN IMMEDIATE"));
         try {
             if (['cashier', 'menu', 'recurring', 'employee'].includes(type) && !(type === 'menu' && shopId === '__all__') && !(await this.db.prepare("SELECT id FROM development_records WHERE id=? AND kind='shop' AND archived=0").get(shopId)))
@@ -282,7 +282,7 @@ export class ManagementStore {
         }
         return (await this.db.prepare("SELECT payload FROM recurring_payments WHERE month=?").all(month)).map(row => { const expense = JSON.parse(String(row.payload)) as MonthlyExpense; return { ...expense, paidMinor: expense.paidMinor ?? (expense.paid ? expense.pricePaisa : 0), payments: expense.payments ?? [] }; });
     }
-    async recordPayment(actor: LocalUser, idValue: unknown, monthValue: unknown, amount: unknown, operationValue: unknown) {
+    async recordPayment(actor: LocalUser, idValue: unknown, monthValue: unknown, amount: unknown, operationValue: unknown, recordedAt?: string) {
         (await this.authorize(actor));
         const id = text(idValue, 64, true), month = text(monthValue, 7, true), operationId = text(operationValue, 64, true);
         if (typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount <= 0)
@@ -298,7 +298,7 @@ export class ManagementStore {
             if (!previous) {
                 if (amount > row.pricePaisa - row.paidMinor)
                     throw new Error('Payment cannot exceed the remaining amount. Refresh the monthly expenses and try again.');
-                const paidMinor = row.paidMinor + amount, paidAt = new Date().toISOString(), paidBy = actor.displayName;
+                const paidMinor = row.paidMinor + amount, paidAt = recordedAt ?? new Date().toISOString(), paidBy = actor.displayName;
                 (await this.db.prepare("UPDATE recurring_payments SET payload=? WHERE id=? AND month=?").run(JSON.stringify({ ...row, paidMinor, paid: paidMinor === row.pricePaisa, paidAt, paidBy, payments: [...row.payments, { operationId, amountMinor: amount, paidAt, paidBy }] }), id, month));
             }
             (await this.db.exec("COMMIT"));

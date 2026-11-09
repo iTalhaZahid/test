@@ -172,7 +172,11 @@ export class SalesStore {
         if (!creditor && received < total) throw new Error('Amount received must cover the total bill.');
         if (paymentMethod.category !== 'cash' && received > total) throw new Error('Card and online payments cannot exceed the total bill.');
         const date = new Date();
-        const invoiceNumber=Number(this.db.prepare('SELECT COALESCE(MAX(invoice_number),1000)+1 AS next FROM sales').get()!.next);
+        const reserved=this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='offline_invoice_ranges'").get();
+        const range=reserved?this.db.prepare('SELECT * FROM offline_invoice_ranges WHERE next_number<=last_number ORDER BY first_number LIMIT 1').get():undefined;
+        if(reserved&&!range)throw new Error('Connect online to reserve more invoice numbers before recording another sale.');
+        const invoiceNumber=range?Number(range.next_number):Number(this.db.prepare('SELECT COALESCE(MAX(invoice_number),1000)+1 AS next FROM sales').get()!.next);
+        if(range)this.db.prepare('UPDATE offline_invoice_ranges SET next_number=next_number+1 WHERE first_number=?').run(Number(range.first_number));
         if(invoiceNumber>99999999)throw new Error('Eight-digit invoice numbers are exhausted. Contact support.');
         sale = { id, invoiceNumber, date:date.toISOString(), businessDate:businessDate(date), currency:'QAR', cashierId:actor.id, cashierName:actor.displayName, ...shop,
           customerType:request.customerType, ...(table?{table}:{}), paymentMethod, creditor, lines,subtotal,discountMinor,...(request.discount?{discount:request.discount}:{}),total,received,cashApplied:Math.min(received,total),change:Math.max(0,received-total),credit:Math.max(0,total-received) };

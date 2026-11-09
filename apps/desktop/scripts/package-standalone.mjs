@@ -31,7 +31,7 @@ await cp(path.join(desktop, 'dist'), path.join(stage, 'dist'), { recursive: true
 await writeFile(path.join(stage, 'package.json'), JSON.stringify({
   name: `pos-terminal-${edition}`, version: metadata.version,
   description: metadata.description, author: metadata.author,
-  main: online ? 'dist/main/online-main.js' : metadata.main, packageManager: 'npm@11.10.0',
+  main: metadata.main, packageManager: 'npm@11.10.0',
 }));
 for (const file of ['electron-builder.yml', `electron-builder.${edition}.yml`]) {
   await cp(path.join(desktop, file), path.join(stage, file));

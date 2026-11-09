@@ -81,7 +81,7 @@ export class SalesStore {
             (await this.db.prepare("INSERT INTO recovery_entries(operation_id,kind,payload) VALUES(?,?,?) ON CONFLICT(kind,operation_id) DO UPDATE SET payload=excluded.payload").run(sale.id, table, (await this.protect(JSON.stringify(sale)))));
         (await this.db.prepare(`UPDATE ${table} SET recovery_ready=1 WHERE id=?`).run(sale.id));
     }
-    async save(user: LocalUser | null, input: unknown): Promise<{
+    async save(user: LocalUser | null, input: unknown, offline?: { createdAt: string; catalogVersion: number; invoiceNumber: number }): Promise<{
         ok: true;
         sale: Sale;
     } | {
@@ -149,7 +149,14 @@ export class SalesStore {
                     if (seen.has(lineKey))
                         throw new Error('Duplicate item.');
                     seen.add(lineKey);
-                    const item = (await this.db.prepare("SELECT name,\"pricePaisa\",half_price FROM development_records WHERE id=? AND kind='menu' AND archived=0 AND (shop_id=? OR shop_id='__all__')").get(itemId, shop.shopId));
+                    let item = (await this.db.prepare("SELECT name,\"pricePaisa\",half_price FROM development_records WHERE id=? AND kind='menu' AND archived=0 AND (shop_id=? OR shop_id='__all__')").get(itemId, shop.shopId));
+                    let currentPriceMatches=false;
+                    if(offline&&item)try{currentPriceMatches=menuPortionPrice(Number(item.pricePaisa),Number(item.half_price),line.portion)===line.unitPrice;}catch{ /* Portion options may have changed while this terminal was offline. */ }
+                    if (offline && !currentPriceMatches) {
+                        const previous = await this.db.prepare("SELECT payload FROM desktop_changes WHERE entity='record' AND key=? AND version<=? ORDER BY version DESC LIMIT 1").get(itemId,offline.catalogVersion);
+                        const historical = previous ? JSON.parse(String(previous.payload)) : null;
+                        if (historical?.kind==='menu' && !historical.archived && [shop.shopId,'__all__'].includes(historical.shop_id)) item=historical;
+                    }
                     if (!item)
                         throw new Error('An item is no longer available. Remove it and try again.');
                     const unitPrice = integer(menuPortionPrice(Number(item.pricePaisa),Number(item.half_price),line.portion), 1, 999999999);
@@ -163,8 +170,8 @@ export class SalesStore {
                     throw new Error('Amount received must cover the total bill.');
                 if (paymentMethod.category !== 'cash' && received > total)
                     throw new Error('Card and online payments cannot exceed the total bill.');
-                const date = new Date();
-                const invoiceNumber = Number((await this.db.prepare("SELECT COALESCE(MAX(invoice_number),1000)+1 AS next FROM sales").get())!.next);
+                const date = offline ? new Date(offline.createdAt) : new Date();
+                const invoiceNumber = offline?.invoiceNumber ?? Number((await this.db.prepare('SELECT first_number AS next FROM reserve_invoice_numbers(1)').get())!.next);
                 if (invoiceNumber > 99999999)
                     throw new Error('Eight-digit invoice numbers are exhausted. Contact support.');
                 sale = { id, invoiceNumber, date: date.toISOString(), businessDate: businessDate(date), currency: 'QAR', cashierId: actor.id, cashierName: actor.displayName, ...shop,
@@ -201,7 +208,7 @@ export class SalesStore {
             throw new Error('Choose a valid date range.');
         return (await Promise.all((await this.db.prepare(`SELECT payload,invoice_number FROM sales WHERE business_date BETWEEN ? AND ? ${shopId ? 'AND shop_id=?' : ''} ${filter.type === 'cash' ? "AND customer_type!='creditor' AND COALESCE((payload::jsonb #>> '{paymentMethod,category}'),'cash')='cash'" : filter.type === 'creditor' ? "AND customer_type='creditor'" : ''} ORDER BY rowid DESC`).all(...(shopId ? [start, end, shopId === '__legacy__' ? '' : shopId] : [start, end]))).map(async (row) => (await this.readSale(row)))));
     }
-    async saveExpense(user: LocalUser | null, input: unknown): Promise<{
+    async saveExpense(user: LocalUser | null, input: unknown, createdAt?: string): Promise<{
         ok: true;
         expense: Expense;
     } | {
@@ -244,7 +251,7 @@ export class SalesStore {
                     throw new Error('Choose an active shop for this expense.');
                 shop = { shopId: String(selected.id), shopName: String(selected.name) };
             }
-            const expense: Expense = { ...request, id, date, category, description, amountMinor, createdAt: new Date().toISOString(), cashierId: actor.id, cashierName: actor.displayName, currency: 'QAR', ...shop };
+            const expense: Expense = { ...request, id, date, category, description, amountMinor, createdAt: createdAt ?? new Date().toISOString(), cashierId: actor.id, cashierName: actor.displayName, currency: 'QAR', ...shop };
             const payload = JSON.stringify(expense);
             (await this.db.exec("BEGIN IMMEDIATE"));
             try {
@@ -308,7 +315,7 @@ export class SalesStore {
             throw new Error('Choose your assigned shop.');
         return (await this.db.prepare(`SELECT payload FROM repayments WHERE date BETWEEN ? AND ? ${shopId ? 'AND shop_id=?' : ''} ORDER BY date DESC,rowid DESC`).all(...(shopId ? [start, end, shopId === '__legacy__' ? '' : shopId] : [start, end]))).map(row => JSON.parse(String(row.payload)) as Repayment);
     }
-    async recoverCredit(user: LocalUser | null, input: unknown): Promise<{
+    async recoverCredit(user: LocalUser | null, input: unknown, createdAt?: string): Promise<{
         ok: true;
         repayment: Repayment;
     } | {
@@ -348,7 +355,7 @@ export class SalesStore {
                     throw new Error('Collect payments at your assigned shop.');
                 if (amount > account.outstanding)
                     throw new Error('Recovery cannot exceed the current outstanding balance.');
-                repayment = { operationId: id, id, creditorId, date, amountMinor: amount, createdAt: new Date().toISOString(), acceptedBy: actor.id, acceptedByName: actor.displayName, creditor: account.creditor, currency: 'QAR', shopId: String(shop.id), shopName: String(shop.name) };
+                repayment = { operationId: id, id, creditorId, date, amountMinor: amount, createdAt: createdAt ?? new Date().toISOString(), acceptedBy: actor.id, acceptedByName: actor.displayName, creditor: account.creditor, currency: 'QAR', shopId: String(shop.id), shopName: String(shop.name) };
                 const payload = JSON.stringify(repayment);
                 (await this.db.prepare("INSERT INTO repayments(id,customer_id,accepted_by,date,amount_minor,request,payload,shop_id) VALUES(?,?,?,?,?,?,?,?)").run(id, creditorId, actor.id, date, amount, JSON.stringify(request), payload, repayment.shopId!));
                 (await this.db.prepare("INSERT INTO repayment_outbox(operation_id,payload) VALUES(?,?)").run(id, payload));

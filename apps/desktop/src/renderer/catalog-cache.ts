@@ -30,7 +30,7 @@ export function activateCatalogSession(userId:string) {
   try {
     const saved=JSON.parse(localStorage.getItem(storageKey)||'null');
     if(saved)for(const key of keys){
-      if(validRows(key,saved[key])){Object.assign(loaded,{[key]:saved[key]});if(!window.location?.protocol.startsWith('http'))pending.set(key,Promise.resolve(saved[key]));}
+      if(validRows(key,saved[key])){Object.assign(loaded,{[key]:saved[key]});if(!window.location?.protocol.startsWith('http')&&!window.posSync)pending.set(key,Promise.resolve(saved[key]));}
     }
   } catch { /* Invalid cache data is replaced by the next successful load. */ }
   persist();
@@ -41,7 +41,7 @@ function cached<K extends keyof Catalog>(key:K,load:()=>Promise<Catalog[K]>):Pro
   if(existing)return existing as Promise<Catalog[K]>;
   const request=Promise.resolve().then(load);
   pending.set(key,request);
-  void request.then(value=>{if(pending.get(key)===request){loaded[key]=value;persist();if(window.location?.protocol.startsWith('http'))pending.delete(key);}},()=>{if(pending.get(key)===request)pending.delete(key);});
+  void request.then(value=>{if(pending.get(key)===request){loaded[key]=value;persist();if(window.location?.protocol.startsWith('http')||window.posSync)pending.delete(key);}},()=>{if(pending.get(key)===request)pending.delete(key);});
   return request;
 }
 export function peekCatalog<K extends keyof Catalog>(key:K):Catalog[K]|undefined { return loaded[key]; }

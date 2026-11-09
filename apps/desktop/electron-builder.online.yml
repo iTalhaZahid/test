@@ -4,7 +4,7 @@ productName: POS Terminal Online
 extraMetadata:
   name: pos-terminal-online
   productName: POS Terminal Online
-  main: dist/main/online-main.js
+  main: dist/main/main.js
 directories:
   output: release/online
 win:
