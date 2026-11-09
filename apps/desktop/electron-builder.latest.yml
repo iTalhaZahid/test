@@ -1,0 +1,10 @@
+extends: ./electron-builder.yml
+appId: com.pos.latest
+productName: Latest_POS
+extraMetadata:
+  name: pos-terminal-latest
+  productName: Latest_POS
+directories:
+  output: release/latest
+win:
+  artifactName: Latest_POS-Setup.${ext}

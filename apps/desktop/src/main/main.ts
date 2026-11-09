@@ -15,10 +15,11 @@ import { backendConfig } from './backend-config';
 
 const rendererPath = path.join(__dirname, '../renderer/index.html');
 const standalone = app.isPackaged && app.getName() === 'POS Terminal Standalone';
-const website = app.getName() === 'POS Terminal Online' || process.env.POS_WEB_OFFLINE === '1';
+const latest = app.isPackaged && app.getName() === 'Latest_POS';
+const website = app.getName() === 'POS Terminal Online' || latest || process.env.POS_WEB_OFFLINE === '1';
 let demo = allowsDemo(app.isPackaged, app.getName());
 if(website)demo=false;
-const dataDirectory = path.join(app.getPath('appData'), website?'POS Terminal Online':app.isPackaged ? (standalone ? 'POS Terminal Standalone' : demo ? 'POS Terminal Demo' : 'POS Terminal') : 'POS Terminal Development');
+const dataDirectory = path.join(app.getPath('appData'), website?(latest?'Latest_POS':'POS Terminal Online'):app.isPackaged ? (standalone ? 'POS Terminal Standalone' : demo ? 'POS Terminal Demo' : 'POS Terminal') : 'POS Terminal Development');
 const sessionDirectory = path.join(dataDirectory, 'chromium');
 // Chromium chooses its cache during startup, before the ready event.
 mkdirSync(sessionDirectory, { recursive: true });
@@ -74,7 +75,7 @@ if (!app.requestSingleInstanceLock()) {
   await store.initialize();
   management = new ManagementStore(path.join(dataDirectory, 'pos.sqlite'), true, true);
   if (demo) management.seed(await store.cashierVerifier('PosCashier123!'));
-  const recoveryDirectory = path.join(app.getPath('appData'), website?'POS Online Recovery':app.isPackaged ? (standalone ? 'POS Standalone Recovery' : demo ? 'POS Demo Recovery' : 'POS Recovery') : 'POS Development Recovery');
+  const recoveryDirectory = path.join(app.getPath('appData'), website?(latest?'Latest_POS Recovery':'POS Online Recovery'):app.isPackaged ? (standalone ? 'POS Standalone Recovery' : demo ? 'POS Demo Recovery' : 'POS Recovery') : 'POS Development Recovery');
   mkdirSync(recoveryDirectory, { recursive:true });
   sales = new SalesStore(path.join(dataDirectory,'pos.sqlite'),path.join(recoveryDirectory,'pending.sqlite'),payload => safeStorage.encryptString(payload));
   if (backend) {

@@ -9,7 +9,9 @@ import console from 'node:console';
 
 const desktop = fileURLToPath(new URL('../', import.meta.url));
 const online = process.argv.includes('--online');
-const edition = online ? 'online' : 'standalone';
+const latest = process.argv.includes('--latest');
+const websiteSync = online || latest;
+const edition = latest ? 'latest' : online ? 'online' : 'standalone';
 const stage = path.join(desktop, `.test-dist/${edition}-app`);
 const { backendConfig } = createRequire(import.meta.url)(path.join(desktop, 'dist/main/backend-config.js'));
 let localEnvironment = {};
@@ -17,7 +19,7 @@ try { localEnvironment = parseEnv(await readFile(path.join(desktop, '../../.env.
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 const endpoint = backendConfig(process.env.POS_API_URL || localEnvironment.POS_API_URL, []);
 if (!endpoint) throw new Error('Set POS_API_URL to the deployed POS backend origin in .env.local before packaging. Database credentials must not be bundled.');
-if (online) {
+if (websiteSync) {
   const { verifyOnlineConnection } = createRequire(import.meta.url)(path.join(desktop, 'dist/main/online-connection.js'));
   const connection = await verifyOnlineConnection(endpoint);
   if (connection.state !== 'online') throw new Error(connection.message);

@@ -15,7 +15,8 @@
     "package:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
     "package:demo": "pnpm build && electron-builder --config electron-builder.demo.yml --win nsis --x64 --publish never",
     "package:standalone": "corepack pnpm build && node scripts/package-standalone.mjs",
-    "package:online": "corepack pnpm build && node scripts/package-standalone.mjs --online"
+    "package:online": "corepack pnpm build && node scripts/package-standalone.mjs --online",
+    "package:latest": "corepack pnpm build && node scripts/package-standalone.mjs --latest"
   },
   "dependencies": {
     "exceljs": "4.4.0",
